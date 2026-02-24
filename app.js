@@ -2,10 +2,16 @@ const TARGET_DISTANCE_M = 100_000;
 const TARGET_ASCENT_M = 1_609;
 const SEMICIRCLES_TO_DEGREES = 180 / 2_147_483_648;
 const FIT_TO_UNIX_EPOCH_SEC = 631065600;
+const HISTORY_DB_NAME = "cyclingFitAnalyzer";
+const HISTORY_DB_VERSION = 1;
+const HISTORY_STORE_NAME = "rideHistory";
+const HISTORY_MAX_ITEMS = 2;
 
 const fitFileInput = document.getElementById("fitFile");
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
+const historyListEl = document.getElementById("historyList");
+const historyEmptyEl = document.getElementById("historyEmpty");
 
 const distanceTotalEl = document.getElementById("distanceTotal");
 const avgSpeedEl = document.getElementById("avgSpeed");
@@ -53,6 +59,8 @@ const mapState = {
 
 let lastRun = null;
 
+void initializeHistoryPanel();
+
 window.addEventListener("resize", () => {
   if (!lastRun) {
     return;
@@ -88,15 +96,10 @@ fitFileInput.addEventListener("change", async (event) => {
     const buffer = await file.arrayBuffer();
     const parsedFit = parseFitFile(buffer);
     const analysis = analyzeRide(parsedFit);
-
-    lastRun = {
-      fileName: file.name,
-      parsedFit,
-      analysis,
-    };
-
-    resultsEl.classList.remove("hidden");
-    renderAnalysis(lastRun);
+    setCurrentRun(file.name, parsedFit, analysis);
+    removeHistoryParamFromUrl();
+    await addRideToHistory(file, analysis);
+    await renderHistoryList();
 
     statusEl.textContent = "Hotovo. Vypocet byl uspesne dokonceny.";
   } catch (error) {
@@ -139,6 +142,16 @@ download1609Btn.addEventListener("click", () => {
   const downloadName = `${baseName}_fastest_1609m.fit`;
   downloadBinary(trimmedBuffer, downloadName);
 });
+
+function setCurrentRun(fileName, parsedFit, analysis) {
+  lastRun = {
+    fileName,
+    parsedFit,
+    analysis,
+  };
+  resultsEl.classList.remove("hidden");
+  renderAnalysis(lastRun);
+}
 
 function renderAnalysis(run) {
   const { analysis, parsedFit } = run;
@@ -592,6 +605,239 @@ function buildBoundsFromLatLngs(latLngs) {
     return null;
   }
   return window.L.latLngBounds(latLngs);
+}
+
+async function initializeHistoryPanel() {
+  if (!historyListEl || !historyEmptyEl) {
+    return;
+  }
+
+  await renderHistoryList();
+
+  const historyId = getHistoryIdFromUrl();
+  if (historyId === null) {
+    return;
+  }
+
+  await openHistoryEntry(historyId);
+}
+
+async function openHistoryEntry(historyId) {
+  try {
+    statusEl.textContent = "Nacitam vyjizdku z historie...";
+    const entry = await getRideHistoryById(historyId);
+
+    if (!entry) {
+      statusEl.textContent = "Pozadovany zaznam v historii nebyl nalezen.";
+      return;
+    }
+
+    if (!(entry.fileBlob instanceof Blob)) {
+      statusEl.textContent = "Zaznam historie je neuplny. Nahraj soubor znovu.";
+      return;
+    }
+
+    const buffer = await entry.fileBlob.arrayBuffer();
+    const parsedFit = parseFitFile(buffer);
+    const analysis = analyzeRide(parsedFit);
+    setCurrentRun(entry.fileName, parsedFit, analysis);
+    statusEl.textContent = `Nacteno z historie: ${entry.fileName}`;
+  } catch (error) {
+    statusEl.textContent = `Nacteni historie selhalo: ${error.message}`;
+    console.error(error);
+  }
+}
+
+async function renderHistoryList() {
+  if (!historyListEl || !historyEmptyEl) {
+    return;
+  }
+
+  try {
+    const entries = await getRecentRideHistory(HISTORY_MAX_ITEMS);
+    historyListEl.replaceChildren();
+
+    if (!entries.length) {
+      historyEmptyEl.classList.remove("hidden");
+      return;
+    }
+
+    historyEmptyEl.classList.add("hidden");
+    for (const entry of entries) {
+      historyListEl.append(createHistoryCard(entry));
+    }
+  } catch (error) {
+    historyListEl.replaceChildren();
+    historyEmptyEl.classList.remove("hidden");
+    historyEmptyEl.textContent = "Historii se nepodarilo nacist.";
+    console.error(error);
+  }
+}
+
+function createHistoryCard(entry) {
+  const card = document.createElement("article");
+  card.className = "history-item";
+
+  const icon = document.createElement("div");
+  icon.className = "history-icon";
+  icon.textContent = "FIT";
+
+  const main = document.createElement("div");
+  main.className = "history-main";
+
+  const name = document.createElement("p");
+  name.className = "history-name";
+  name.textContent = entry.fileName || `Jizda #${entry.id}`;
+
+  const meta = document.createElement("p");
+  meta.className = "history-meta";
+  const distance = Number.isFinite(entry.totalDistanceM) ? formatDistance(entry.totalDistanceM) : "-";
+  const ascent = Number.isFinite(entry.totalAscentM) ? formatAscent(entry.totalAscentM) : "-";
+  meta.textContent = `${distance} | ${ascent} | ${formatHistoryDate(entry.createdAtMs)}`;
+
+  main.append(name, meta);
+
+  const link = document.createElement("a");
+  link.className = "history-link";
+  link.textContent = "Otevrit";
+  link.href = buildHistoryLink(entry.id);
+
+  card.append(icon, main, link);
+  return card;
+}
+
+async function addRideToHistory(file, analysis) {
+  if (!file || !Number.isFinite(analysis.totalDistanceM) || !Number.isFinite(analysis.totalAscentM)) {
+    return;
+  }
+
+  try {
+    const db = await openHistoryDb();
+
+    const addTx = db.transaction(HISTORY_STORE_NAME, "readwrite");
+    const addStore = addTx.objectStore(HISTORY_STORE_NAME);
+    addStore.add({
+      fileName: file.name,
+      fileBlob: file,
+      createdAtMs: Date.now(),
+      totalDistanceM: analysis.totalDistanceM,
+      totalAscentM: analysis.totalAscentM,
+      avgSpeedKmh: analysis.avgSpeedKmh,
+    });
+    await transactionToPromise(addTx);
+
+    const pruneTx = db.transaction(HISTORY_STORE_NAME, "readwrite");
+    const pruneStore = pruneTx.objectStore(HISTORY_STORE_NAME);
+    const allEntries = await requestToPromise(pruneStore.getAll());
+    allEntries.sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0) || (b.id ?? 0) - (a.id ?? 0));
+    for (const staleEntry of allEntries.slice(HISTORY_MAX_ITEMS)) {
+      pruneStore.delete(staleEntry.id);
+    }
+    await transactionToPromise(pruneTx);
+    db.close();
+  } catch (error) {
+    console.error("Ulozeni historie selhalo:", error);
+  }
+}
+
+async function getRecentRideHistory(limit) {
+  const db = await openHistoryDb();
+  const tx = db.transaction(HISTORY_STORE_NAME, "readonly");
+  const store = tx.objectStore(HISTORY_STORE_NAME);
+  const entries = await requestToPromise(store.getAll());
+  await transactionToPromise(tx);
+  db.close();
+  entries.sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0) || (b.id ?? 0) - (a.id ?? 0));
+  return entries.slice(0, limit);
+}
+
+async function getRideHistoryById(id) {
+  const db = await openHistoryDb();
+  const tx = db.transaction(HISTORY_STORE_NAME, "readonly");
+  const store = tx.objectStore(HISTORY_STORE_NAME);
+  const entry = await requestToPromise(store.get(id));
+  await transactionToPromise(tx);
+  db.close();
+  return entry || null;
+}
+
+function openHistoryDb() {
+  if (!("indexedDB" in window)) {
+    throw new Error("IndexedDB neni dostupna.");
+  }
+
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(HISTORY_DB_NAME, HISTORY_DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(HISTORY_STORE_NAME)) {
+        db.createObjectStore(HISTORY_STORE_NAME, { keyPath: "id", autoIncrement: true });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Nepodarilo se otevrit historii."));
+  });
+}
+
+function requestToPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB request selhal."));
+  });
+}
+
+function transactionToPromise(transaction) {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("IndexedDB transaction selhala."));
+    transaction.onabort = () => reject(transaction.error || new Error("IndexedDB transaction byla prerusena."));
+  });
+}
+
+function buildHistoryLink(entryId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("history", String(entryId));
+  url.hash = "results";
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function getHistoryIdFromUrl() {
+  const raw = new URLSearchParams(window.location.search).get("history");
+  if (!raw) {
+    return null;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function removeHistoryParamFromUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("history")) {
+    return;
+  }
+  url.searchParams.delete("history");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function formatHistoryDate(createdAtMs) {
+  if (!Number.isFinite(createdAtMs)) {
+    return "datum nezname";
+  }
+  const date = new Date(createdAtMs);
+  if (Number.isNaN(date.valueOf())) {
+    return "datum nezname";
+  }
+  return date.toLocaleString("cs-CZ", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function parseFitFile(arrayBuffer) {

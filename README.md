@@ -27,6 +27,9 @@ Jednoducha web appka pro analyzu jizdy z `.fit` souboru.
   - cela vyjizdka
   - segment 100 km nad celou trasou
   - segment 1609 m nad celou trasou
+- Historie poslednich 2 uploadu:
+  - na uvodni strane pod uploadem
+  - rychly proklik na vysledkovou obrazovku konkretni jizdy
 
 ## Lokalni spusteni
 

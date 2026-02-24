@@ -156,6 +156,75 @@ h2 {
   filter: saturate(1.1);
 }
 
+.history-panel h2 {
+  margin-bottom: 10px;
+}
+
+.history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.history-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid #d9c5a9;
+  background: linear-gradient(145deg, #fff5e8, #fee4cb);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  font-family: "IBM Plex Mono", "Fira Code", monospace;
+  color: #9b4f25;
+  font-weight: 700;
+}
+
+.history-main {
+  min-width: 0;
+}
+
+.history-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-meta {
+  margin: 5px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.history-link {
+  text-decoration: none;
+  font-size: 13px;
+  color: var(--accent-ink);
+  background: linear-gradient(90deg, #d34717, #ef7d3e);
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.history-link:hover {
+  filter: saturate(1.08);
+}
+
 .maps-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -204,6 +273,15 @@ h2 {
 @media (max-width: 760px) {
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .history-item {
+    grid-template-columns: auto 1fr;
+  }
+
+  .history-link {
+    grid-column: 1 / -1;
+    width: fit-content;
   }
 
   .maps-grid {
