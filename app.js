@@ -87,7 +87,7 @@ fitFileInput.addEventListener("change", async (event) => {
     return;
   }
 
-  statusEl.textContent = "Zpracovavam FIT soubor...";
+  statusEl.textContent = "Zpracovávám FIT soubor...";
   resultsEl.classList.add("hidden");
   download100Btn.classList.add("hidden");
   download1609Btn.classList.add("hidden");
@@ -101,9 +101,9 @@ fitFileInput.addEventListener("change", async (event) => {
     await addRideToHistory(file, analysis);
     await renderHistoryList();
 
-    statusEl.textContent = "Hotovo. Vypocet byl uspesne dokonceny.";
+    statusEl.textContent = "Hotovo. Výpočet byl úspěšně dokončen.";
   } catch (error) {
-    statusEl.textContent = `Nepodarilo se nacist soubor: ${error.message}`;
+    statusEl.textContent = `Nepodařilo se načíst soubor: ${error.message}`;
     lastRun = null;
     console.error(error);
   }
@@ -165,27 +165,27 @@ function renderAnalysis(run) {
   if (analysis.fastest100) {
     const points100 = estimatePoints100(analysis.fastest100.elapsedSec, bonus.bonusPoints);
     segment100SummaryEl.textContent =
-      `Cas: ${formatDuration(analysis.fastest100.elapsedSec)} | ` +
-      `Prumerna rychlost: ${formatSpeed(analysis.fastest100.avgSpeedKmh)} | ` +
-      `Odhad bodu: ${formatPoints(points100, bonus, activityDate)}`;
+      `Čas: ${formatDuration(analysis.fastest100.elapsedSec)} | ` +
+      `Průměrná rychlost: ${formatSpeed(analysis.fastest100.avgSpeedKmh)}\n` +
+      `Odhad bodů: ${formatPoints(points100, bonus, activityDate)}`;
     download100Btn.classList.remove("hidden");
   } else {
     segment100SummaryEl.textContent =
-      "Vyjizdka nema 100 km, nejrychlejsi usek nelze vypocitat.";
+      "Vyjížďka nemá 100 km, nejrychlejší úsek nelze vypočítat.";
     download100Btn.classList.add("hidden");
   }
 
   if (analysis.fastest1609) {
     const points1609 = estimatePoints1609(analysis.fastest1609.elapsedSec, bonus.bonusPoints);
     segment1609SummaryEl.textContent =
-      `Cas: ${formatDuration(analysis.fastest1609.elapsedSec)} | ` +
-      `Ujeta vzdalenost: ${formatDistance(analysis.fastest1609.distanceCoveredM)} | ` +
-      `Prumerna rychlost: ${formatSpeed(analysis.fastest1609.avgSpeedKmh)} | ` +
-      `Odhad bodu: ${formatPoints(points1609, bonus, activityDate)}`;
+      `Čas: ${formatDuration(analysis.fastest1609.elapsedSec)} | ` +
+      `Ujetá vzdálenost: ${formatDistance(analysis.fastest1609.distanceCoveredM)} | ` +
+      `Průměrná rychlost: ${formatSpeed(analysis.fastest1609.avgSpeedKmh)}\n` +
+      `Odhad bodů: ${formatPoints(points1609, bonus, activityDate)}`;
     download1609Btn.classList.remove("hidden");
   } else {
     segment1609SummaryEl.textContent =
-      "Vyjizdka nema nastoupanych 1609 m, tento usek nelze vypocitat.";
+      "Vyjížďka nemá nastoupaných 1609 m, tento úsek nelze vypočítat.";
     download1609Btn.classList.add("hidden");
   }
 
@@ -195,7 +195,7 @@ function renderAnalysis(run) {
 function analyzeRide(parsedFit) {
   const samples = buildSamples(parsedFit.records);
   if (samples.length < 2) {
-    throw new Error("V souboru nejsou pouzitelna record data.");
+    throw new Error("V souboru nejsou použitelná record data.");
   }
 
   const first = samples[0];
@@ -255,6 +255,7 @@ function analyzeRide(parsedFit) {
     activityStartFitTimestamp: first.timestamp,
     totalDistanceM,
     totalAscentM,
+    elapsedSec,
     avgSpeedKmh,
     fastest100,
     fastest1609,
@@ -377,15 +378,16 @@ function renderMaps(parsedFit, analysis) {
   const fullTrack = extractTrackPoints(parsedFit.records);
   const fullLatLngs = toLatLngs(fullTrack);
   const hasMapLibrary = typeof window.L !== "undefined";
+  const fullRideSummary = Number.isFinite(analysis.elapsedSec) && analysis.elapsedSec > 0
+    ? `${formatDuration(analysis.elapsedSec)} | ${formatSpeed(analysis.avgSpeedKmh)}`
+    : null;
 
-  mapFullNoteEl.textContent = fullTrack.length
-    ? `${fullTrack.length} GPS bodu`
-    : "V tomto FIT souboru nejsou GPS souradnice.";
+  mapFullNoteEl.textContent = fullRideSummary || "V tomto FIT souboru nejsou použitelné časové údaje.";
 
   if (!hasMapLibrary) {
-    mapFullNoteEl.textContent += " | Mapovy podklad se nepodarilo nacist.";
-    map100NoteEl.textContent = "Mapovy podklad se nepodarilo nacist.";
-    map1609NoteEl.textContent = "Mapovy podklad se nepodarilo nacist.";
+    mapFullNoteEl.textContent += " | Mapový podklad se nepodařilo načíst.";
+    map100NoteEl.textContent = "Mapový podklad se nepodařilo načíst.";
+    map1609NoteEl.textContent = "Mapový podklad se nepodařilo načíst.";
     return;
   }
 
@@ -414,7 +416,7 @@ function renderMaps(parsedFit, analysis) {
     });
     map100NoteEl.textContent = segment100LatLngs.length >= 2
       ? `${formatDuration(analysis.fastest100.elapsedSec)} | ${formatSpeed(analysis.fastest100.avgSpeedKmh)}`
-      : "Segment je vypocitany, ale chybi mu GPS body.";
+      : "Segment je vypočítaný, ale chybí mu GPS body.";
   } else {
     drawContextAndSegment(mapState.km100, {
       contextLatLngs: fullLatLngs,
@@ -423,7 +425,7 @@ function renderMaps(parsedFit, analysis) {
       boundsLatLngs: fullLatLngs,
       padding: 14,
     });
-    map100NoteEl.textContent = "Segment 100 km neni k dispozici.";
+    map100NoteEl.textContent = "Segment 100 km není k dispozici.";
   }
 
   if (analysis.fastest1609) {
@@ -443,7 +445,7 @@ function renderMaps(parsedFit, analysis) {
     });
     map1609NoteEl.textContent = segment1609LatLngs.length >= 2
       ? `${formatDuration(analysis.fastest1609.elapsedSec)} | ${formatSpeed(analysis.fastest1609.avgSpeedKmh)}`
-      : "Segment je vypocitany, ale chybi mu GPS body.";
+      : "Segment je vypočítaný, ale chybí mu GPS body.";
   } else {
     drawContextAndSegment(mapState.m1609, {
       contextLatLngs: fullLatLngs,
@@ -452,7 +454,7 @@ function renderMaps(parsedFit, analysis) {
       boundsLatLngs: fullLatLngs,
       padding: 14,
     });
-    map1609NoteEl.textContent = "Segment 1609 m neni k dispozici.";
+    map1609NoteEl.textContent = "Segment 1609 m není k dispozici.";
   }
 }
 
@@ -624,16 +626,16 @@ async function initializeHistoryPanel() {
 
 async function openHistoryEntry(historyId) {
   try {
-    statusEl.textContent = "Nacitam vyjizdku z historie...";
+    statusEl.textContent = "Načítám vyjížďku z historie...";
     const entry = await getRideHistoryById(historyId);
 
     if (!entry) {
-      statusEl.textContent = "Pozadovany zaznam v historii nebyl nalezen.";
+      statusEl.textContent = "Požadovaný záznam v historii nebyl nalezen.";
       return;
     }
 
     if (!(entry.fileBlob instanceof Blob)) {
-      statusEl.textContent = "Zaznam historie je neuplny. Nahraj soubor znovu.";
+      statusEl.textContent = "Záznam historie je neúplný. Nahraj soubor znovu.";
       return;
     }
 
@@ -641,9 +643,9 @@ async function openHistoryEntry(historyId) {
     const parsedFit = parseFitFile(buffer);
     const analysis = analyzeRide(parsedFit);
     setCurrentRun(entry.fileName, parsedFit, analysis);
-    statusEl.textContent = `Nacteno z historie: ${entry.fileName}`;
+    statusEl.textContent = `Načteno z historie: ${entry.fileName}`;
   } catch (error) {
-    statusEl.textContent = `Nacteni historie selhalo: ${error.message}`;
+    statusEl.textContent = `Načtení historie selhalo: ${error.message}`;
     console.error(error);
   }
 }
@@ -669,7 +671,7 @@ async function renderHistoryList() {
   } catch (error) {
     historyListEl.replaceChildren();
     historyEmptyEl.classList.remove("hidden");
-    historyEmptyEl.textContent = "Historii se nepodarilo nacist.";
+    historyEmptyEl.textContent = "Historii se nepodařilo načíst.";
     console.error(error);
   }
 }
@@ -687,7 +689,7 @@ function createHistoryCard(entry) {
 
   const name = document.createElement("p");
   name.className = "history-name";
-  name.textContent = entry.fileName || `Jizda #${entry.id}`;
+  name.textContent = entry.fileName || `Jízda #${entry.id}`;
 
   const meta = document.createElement("p");
   meta.className = "history-meta";
@@ -699,7 +701,7 @@ function createHistoryCard(entry) {
 
   const link = document.createElement("a");
   link.className = "history-link";
-  link.textContent = "Otevrit";
+  link.textContent = "Otevřít";
   link.href = buildHistoryLink(entry.id);
 
   card.append(icon, main, link);
@@ -736,7 +738,7 @@ async function addRideToHistory(file, analysis) {
     await transactionToPromise(pruneTx);
     db.close();
   } catch (error) {
-    console.error("Ulozeni historie selhalo:", error);
+    console.error("Uložení historie selhalo:", error);
   }
 }
 
@@ -763,7 +765,7 @@ async function getRideHistoryById(id) {
 
 function openHistoryDb() {
   if (!("indexedDB" in window)) {
-    throw new Error("IndexedDB neni dostupna.");
+    throw new Error("IndexedDB není dostupná.");
   }
 
   return new Promise((resolve, reject) => {
@@ -777,22 +779,22 @@ function openHistoryDb() {
     };
 
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error("Nepodarilo se otevrit historii."));
+    request.onerror = () => reject(request.error || new Error("Nepodařilo se otevřít historii."));
   });
 }
 
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error("IndexedDB request selhal."));
+    request.onerror = () => reject(request.error || new Error("IndexedDB požadavek selhal."));
   });
 }
 
 function transactionToPromise(transaction) {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error || new Error("IndexedDB transaction selhala."));
-    transaction.onabort = () => reject(transaction.error || new Error("IndexedDB transaction byla prerusena."));
+    transaction.onerror = () => reject(transaction.error || new Error("IndexedDB transakce selhala."));
+    transaction.onabort = () => reject(transaction.error || new Error("IndexedDB transakce byla přerušena."));
   });
 }
 
@@ -826,11 +828,11 @@ function removeHistoryParamFromUrl() {
 
 function formatHistoryDate(createdAtMs) {
   if (!Number.isFinite(createdAtMs)) {
-    return "datum nezname";
+    return "datum neznámé";
   }
   const date = new Date(createdAtMs);
   if (Number.isNaN(date.valueOf())) {
-    return "datum nezname";
+    return "datum neznámé";
   }
   return date.toLocaleString("cs-CZ", {
     day: "2-digit",
@@ -843,17 +845,17 @@ function formatHistoryDate(createdAtMs) {
 function parseFitFile(arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
   if (bytes.length < 14) {
-    throw new Error("Soubor je prilis kratky na FIT format.");
+    throw new Error("Soubor je příliš krátký na FIT formát.");
   }
 
   const headerSize = bytes[0];
   if (headerSize < 12 || bytes.length < headerSize) {
-    throw new Error("Neplatna FIT hlavicka.");
+    throw new Error("Neplatná FIT hlavička.");
   }
 
   const dataType = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
   if (dataType !== ".FIT") {
-    throw new Error("Soubor nema FIT podpis.");
+    throw new Error("Soubor nemá FIT podpis.");
   }
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -864,7 +866,7 @@ function parseFitFile(arrayBuffer) {
   const dataEnd = dataStart + dataSize;
 
   if (dataEnd > bytes.length) {
-    throw new Error("FIT hlavicka ukazuje mimo data souboru.");
+    throw new Error("FIT hlavička ukazuje mimo data souboru.");
   }
 
   const definitions = new Map();
@@ -885,13 +887,13 @@ function parseFitFile(arrayBuffer) {
       const timeOffset = header & 0x1f;
       const definition = definitions.get(localMesgNum);
       if (!definition) {
-        throw new Error(`Chybi definice pro local message ${localMesgNum}.`);
+        throw new Error(`Chybí definice pro local message ${localMesgNum}.`);
       }
 
       const payloadStart = position;
       const payloadEnd = payloadStart + definition.dataSize;
       if (payloadEnd > dataEnd) {
-        throw new Error("Data message presahuje konec FIT dat.");
+        throw new Error("Data message přesahuje konec FIT dat.");
       }
 
       const parsedFields = decodeDataFields(view, payloadStart, definition);
@@ -957,13 +959,13 @@ function parseFitFile(arrayBuffer) {
 
     const definition = definitions.get(localMesgNum);
     if (!definition) {
-      throw new Error(`Chybi definice pro local message ${localMesgNum}.`);
+      throw new Error(`Chybí definice pro local message ${localMesgNum}.`);
     }
 
     const payloadStart = position;
     const payloadEnd = payloadStart + definition.dataSize;
     if (payloadEnd > dataEnd) {
-      throw new Error("Data message presahuje konec FIT dat.");
+      throw new Error("Data message přesahuje konec FIT dat.");
     }
 
     const parsedFields = decodeDataFields(view, payloadStart, definition);
@@ -1191,7 +1193,7 @@ function extractRecordData(fieldMap, timestamp, recordOrdinal) {
 
 function buildTrimmedFit(parsedFit, startRecordOrdinal, endRecordOrdinal) {
   if (startRecordOrdinal > endRecordOrdinal) {
-    throw new Error("Neplatny interval segmentu.");
+    throw new Error("Neplatný interval segmentu.");
   }
 
   const startTs = parsedFit.records[startRecordOrdinal]?.timestamp;
@@ -1237,7 +1239,7 @@ function buildTrimmedFit(parsedFit, startRecordOrdinal, endRecordOrdinal) {
   }
 
   if (!selectedMessages.length) {
-    throw new Error("Nepodarilo se slozit vystupni FIT soubor.");
+    throw new Error("Nepodařilo se složit výstupní FIT soubor.");
   }
 
   const dataSize = selectedMessages.reduce((sum, message) => sum + message.length, 0);
@@ -1381,7 +1383,7 @@ function estimateChallengePoints(config) {
 
 function getChallengeBonus(activityDate) {
   if (!(activityDate instanceof Date) || Number.isNaN(activityDate.valueOf())) {
-    return { bonusPoints: 0, label: "datum nezname" };
+    return { bonusPoints: 0, label: "datum neznámé" };
   }
 
   const day = activityDate.toISOString().slice(0, 10);
@@ -1405,7 +1407,7 @@ function fitTimestampToDate(fitTimestampSec) {
 }
 
 function formatPoints(points, bonus, activityDate) {
-  const dateLabel = activityDate ? activityDate.toISOString().slice(0, 10) : "nezname";
+  const dateLabel = activityDate ? activityDate.toISOString().slice(0, 10) : "neznámé";
   if (points.bonusPoints > 0) {
     return `${points.totalPoints} b (${points.basePoints} + ${points.bonusPoints}), ${bonus.label}, datum ${dateLabel}`;
   }

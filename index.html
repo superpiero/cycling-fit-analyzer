@@ -22,76 +22,76 @@
     <main class="app-shell">
       <header class="hero">
         <p class="eyebrow">Cycling Lab</p>
-        <h1>Analyza vyjizdky z FIT</h1>
+        <h1>Analýza vyjížďky z FIT</h1>
         <p class="subhead">
-          Nahraj export ze Stravy (`.fit`) a ziskej metriky, nejrychlejsi 100 km
-          i nejrychlejsi cast s prevysenim 1609 m.
+          Nahraj export ze Stravy (`.fit`) a získej metriky, nejrychlejších 100 km
+          i nejrychlejší část s převýšením 1609 m.
         </p>
       </header>
 
       <section class="panel upload-panel">
-        <label class="upload-label" for="fitFile">Vyber FIT soubor</label>
+        <label class="upload-label" for="fitFile">Vyberte FIT soubor</label>
         <input id="fitFile" type="file" accept=".fit" />
-        <p id="status" class="status">Cekam na soubor...</p>
+        <p id="status" class="status">Čekám na soubor...</p>
       </section>
 
       <section class="panel history-panel">
-        <h2>Posledni nahrane soubory</h2>
-        <p id="historyEmpty" class="status">Historie je zatim prazdna.</p>
+        <h2>Poslední nahrané soubory</h2>
+        <p id="historyEmpty" class="status">Historie je zatím prázdná.</p>
         <div id="historyList" class="history-list"></div>
       </section>
 
       <section id="results" class="results hidden">
         <div class="panel">
-          <h2>Zakladni informace</h2>
+          <h2>Základní informace</h2>
           <div class="stats-grid">
             <article class="stat-card">
-              <p class="stat-label">Vzdalenost</p>
+              <p class="stat-label">Vzdálenost</p>
               <p id="distanceTotal" class="stat-value">-</p>
             </article>
             <article class="stat-card">
-              <p class="stat-label">Prumerna rychlost</p>
+              <p class="stat-label">Průměrná rychlost</p>
               <p id="avgSpeed" class="stat-value">-</p>
             </article>
             <article class="stat-card">
-              <p class="stat-label">Nastoupane metry</p>
+              <p class="stat-label">Nastoupané metry</p>
               <p id="totalAscent" class="stat-value">-</p>
             </article>
           </div>
         </div>
 
         <div class="panel">
-          <h2>Nejrychlejsich 100 km</h2>
+          <h2>Nejrychlejších 100 km</h2>
           <p id="segment100Summary" class="segment-summary"></p>
           <button id="download100Btn" class="download-btn hidden" type="button">
-            Stahnout tuto cast jako .fit
+            Stáhnout tuto část jako .fit
           </button>
         </div>
 
         <div class="panel">
-          <h2>Nejrychlejsi usek s +1609 m</h2>
+          <h2>Nejrychlejší úsek s +1609 m</h2>
           <p id="segment1609Summary" class="segment-summary"></p>
           <button id="download1609Btn" class="download-btn hidden" type="button">
-            Stahnout tuto cast jako .fit
+            Stáhnout tuto část jako .fit
           </button>
         </div>
 
         <div class="panel">
-          <h2>Mapy (neklikaci)</h2>
+          <h2>Mapy (neklikací)</h2>
           <div class="maps-grid">
             <article class="map-card">
-              <p class="map-title">Cela vyjizdka</p>
-              <div id="mapFull" class="map-view" aria-label="Mapa cele vyjizdky"></div>
+              <p class="map-title">Celá vyjížďka</p>
+              <div id="mapFull" class="map-view" aria-label="Mapa celé vyjížďky"></div>
               <p id="mapFullNote" class="map-note"></p>
             </article>
             <article class="map-card">
-              <p class="map-title">Nejrychlejsich 100 km</p>
-              <div id="map100" class="map-view" aria-label="Mapa 100 km useku"></div>
+              <p class="map-title">Nejrychlejších 100 km</p>
+              <div id="map100" class="map-view" aria-label="Mapa 100 km úseku"></div>
               <p id="map100Note" class="map-note"></p>
             </article>
             <article class="map-card">
-              <p class="map-title">Nejrychlejsi +1609 m</p>
-              <div id="map1609" class="map-view" aria-label="Mapa useku 1609 m"></div>
+              <p class="map-title">Nejrychlejší +1609 m</p>
+              <div id="map1609" class="map-view" aria-label="Mapa úseku 1609 m"></div>
               <p id="map1609Note" class="map-note"></p>
             </article>
           </div>

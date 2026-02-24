@@ -136,6 +136,7 @@ h2 {
   margin: 0;
   color: #302d28;
   line-height: 1.45;
+  white-space: pre-line;
 }
 
 .download-btn {
