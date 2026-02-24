@@ -60,7 +60,7 @@ Pokud se zmeny na Vercelu neobjevuji (typicky po prepnuti repo na private), pouz
 2. Vytvor novy hook pro branch `main`.
 3. V GitHub repozitari nastav secret `VERCEL_DEPLOY_HOOK_URL` s hodnotou toho hook URL:
    - `Settings -> Secrets and variables -> Actions -> New repository secret`
-4. Workflow [vercel-deploy-hook.yml](/Users/pierosestak/Library/Mobile Documents/com~apple~CloudDocs/Codex/.github/workflows/vercel-deploy-hook.yml) pak na kazdy push do `main` zavola hook a vynuti novy deploy.
+4. Workflow [`vercel-deploy-hook.yml`](./.github/workflows/vercel-deploy-hook.yml) pak na kazdy push do `main` zavola hook a vynuti novy deploy.
 
 ### Automaticke nahrani nove verze jednim prikazem
 
