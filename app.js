@@ -1,6 +1,7 @@
 const TARGET_DISTANCE_M = 100_000;
 const TARGET_ASCENT_M = 1_609;
 const SEMICIRCLES_TO_DEGREES = 180 / 2_147_483_648;
+const FIT_TO_UNIX_EPOCH_SEC = 631065600;
 
 const fitFileInput = document.getElementById("fitFile");
 const statusEl = document.getElementById("status");
@@ -145,14 +146,19 @@ download1609Btn.addEventListener("click", () => {
 
 function renderAnalysis(run) {
   const { analysis, parsedFit } = run;
+  const activityDate = fitTimestampToDate(analysis.activityStartFitTimestamp);
+  const bonus = getChallengeBonus(activityDate);
+
   distanceTotalEl.textContent = formatDistance(analysis.totalDistanceM);
   avgSpeedEl.textContent = formatSpeed(analysis.avgSpeedKmh);
   totalAscentEl.textContent = formatAscent(analysis.totalAscentM);
 
   if (analysis.fastest100) {
+    const points100 = estimatePoints100(analysis.fastest100.elapsedSec, bonus.bonusPoints);
     segment100SummaryEl.textContent =
       `Cas: ${formatDuration(analysis.fastest100.elapsedSec)} | ` +
-      `Prumerna rychlost: ${formatSpeed(analysis.fastest100.avgSpeedKmh)}`;
+      `Prumerna rychlost: ${formatSpeed(analysis.fastest100.avgSpeedKmh)} | ` +
+      `Odhad bodu: ${formatPoints(points100, bonus, activityDate)}`;
     download100Btn.classList.remove("hidden");
   } else {
     segment100SummaryEl.textContent =
@@ -161,10 +167,12 @@ function renderAnalysis(run) {
   }
 
   if (analysis.fastest1609) {
+    const points1609 = estimatePoints1609(analysis.fastest1609.elapsedSec, bonus.bonusPoints);
     segment1609SummaryEl.textContent =
       `Cas: ${formatDuration(analysis.fastest1609.elapsedSec)} | ` +
       `Ujeta vzdalenost: ${formatDistance(analysis.fastest1609.distanceCoveredM)} | ` +
-      `Prumerna rychlost: ${formatSpeed(analysis.fastest1609.avgSpeedKmh)}`;
+      `Prumerna rychlost: ${formatSpeed(analysis.fastest1609.avgSpeedKmh)} | ` +
+      `Odhad bodu: ${formatPoints(points1609, bonus, activityDate)}`;
     download1609Btn.classList.remove("hidden");
   } else {
     segment1609SummaryEl.textContent =
@@ -235,6 +243,7 @@ function analyzeRide(parsedFit) {
   }
 
   return {
+    activityStartFitTimestamp: first.timestamp,
     totalDistanceM,
     totalAscentM,
     avgSpeedKmh,
@@ -1099,6 +1108,83 @@ function formatDuration(seconds) {
   const mm = String(m).padStart(2, "0");
   const ss = String(s).padStart(2, "0");
   return `${hh}:${mm}:${ss}`;
+}
+
+function estimatePoints100(elapsedSec, bonusPoints) {
+  return estimateChallengePoints({
+    elapsedSec,
+    baseElapsedSec: 2.5 * 3600,
+    basePoints: 120,
+    secondsPerPoint: 180,
+    minPoints: 80,
+    bonusPoints,
+  });
+}
+
+function estimatePoints1609(elapsedSec, bonusPoints) {
+  return estimateChallengePoints({
+    elapsedSec,
+    baseElapsedSec: 1.5 * 3600,
+    basePoints: 120,
+    secondsPerPoint: 360,
+    minPoints: 80,
+    bonusPoints,
+  });
+}
+
+function estimateChallengePoints(config) {
+  const {
+    elapsedSec,
+    baseElapsedSec,
+    basePoints,
+    secondsPerPoint,
+    minPoints,
+    bonusPoints,
+  } = config;
+
+  const rawBasePoints = basePoints + (baseElapsedSec - elapsedSec) / secondsPerPoint;
+  const clampedBasePoints = Math.max(minPoints, rawBasePoints);
+  const roundedBasePoints = Math.round(clampedBasePoints);
+  const totalPoints = roundedBasePoints + bonusPoints;
+
+  return {
+    basePoints: roundedBasePoints,
+    bonusPoints,
+    totalPoints,
+  };
+}
+
+function getChallengeBonus(activityDate) {
+  if (!(activityDate instanceof Date) || Number.isNaN(activityDate.valueOf())) {
+    return { bonusPoints: 0, label: "datum nezname" };
+  }
+
+  const day = activityDate.toISOString().slice(0, 10);
+  if (day >= "2026-02-21" && day <= "2026-02-26") {
+    return { bonusPoints: 30, label: "bonus 21.-26.2." };
+  }
+  if (day >= "2026-02-27" && day <= "2026-03-05") {
+    return { bonusPoints: 20, label: "bonus 27.2.-5.3." };
+  }
+  if (day >= "2026-03-06" && day <= "2026-03-15") {
+    return { bonusPoints: 10, label: "bonus 6.-15.3." };
+  }
+  return { bonusPoints: 0, label: "bez bonusu" };
+}
+
+function fitTimestampToDate(fitTimestampSec) {
+  if (!Number.isFinite(fitTimestampSec)) {
+    return null;
+  }
+  return new Date((fitTimestampSec + FIT_TO_UNIX_EPOCH_SEC) * 1000);
+}
+
+function formatPoints(points, bonus, activityDate) {
+  const dateLabel = activityDate ? activityDate.toISOString().slice(0, 10) : "nezname";
+  if (points.bonusPoints > 0) {
+    return `${points.totalPoints} b (${points.basePoints} + ${points.bonusPoints}), ${bonus.label}, datum ${dateLabel}`;
+  }
+  return `${points.totalPoints} b (${points.basePoints} + 0), ${bonus.label}, datum ${dateLabel}`;
 }
 
 const BASE_TYPE_SIZES = {
