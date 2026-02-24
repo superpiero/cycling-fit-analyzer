@@ -2,7 +2,6 @@ const TARGET_DISTANCE_M = 100_000;
 const TARGET_ASCENT_M = 1_609;
 const SEMICIRCLES_TO_DEGREES = 180 / 2_147_483_648;
 const FIT_TO_UNIX_EPOCH_SEC = 631065600;
-const APP_BUILD = "2026-02-24T13:22Z";
 
 const fitFileInput = document.getElementById("fitFile");
 const statusEl = document.getElementById("status");
@@ -402,7 +401,7 @@ function renderMaps(parsedFit, analysis) {
       contextLatLngs: fullLatLngs,
       segmentLatLngs: segment100LatLngs,
       segmentColor: "#da5a2a",
-      boundsLatLngs: segment100LatLngs.length >= 2 ? segment100LatLngs : fullLatLngs,
+      boundsLatLngs: fullLatLngs.length >= 2 ? fullLatLngs : segment100LatLngs,
       padding: 14,
       zoomDelta: 1,
     });
@@ -433,7 +432,7 @@ function renderMaps(parsedFit, analysis) {
       contextLatLngs: fullLatLngs,
       segmentLatLngs: segment1609LatLngs,
       segmentColor: "#2a5fda",
-      boundsLatLngs: segment1609LatLngs.length >= 2 ? segment1609LatLngs : fullLatLngs,
+      boundsLatLngs: fullLatLngs.length >= 2 ? fullLatLngs : segment1609LatLngs,
       padding: 14,
       zoomDelta: 1,
     });
