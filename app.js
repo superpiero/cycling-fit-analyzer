@@ -24,9 +24,33 @@ const map1609NoteEl = document.getElementById("map1609Note");
 
 const MAP_DEFAULT_CENTER = [50.0755, 14.4378];
 const mapState = {
-  full: { key: "full", element: mapFullEl, map: null, overlays: [], lastBounds: null },
-  km100: { key: "km100", element: map100El, map: null, overlays: [], lastBounds: null },
-  m1609: { key: "m1609", element: map1609El, map: null, overlays: [], lastBounds: null },
+  full: {
+    key: "full",
+    element: mapFullEl,
+    map: null,
+    overlays: [],
+    lastBounds: null,
+    lastPadding: 20,
+    lastZoomDelta: 0,
+  },
+  km100: {
+    key: "km100",
+    element: map100El,
+    map: null,
+    overlays: [],
+    lastBounds: null,
+    lastPadding: 20,
+    lastZoomDelta: 0,
+  },
+  m1609: {
+    key: "m1609",
+    element: map1609El,
+    map: null,
+    overlays: [],
+    lastBounds: null,
+    lastPadding: 20,
+    lastZoomDelta: 0,
+  },
 };
 
 let lastRun = null;
@@ -42,7 +66,11 @@ window.addEventListener("resize", () => {
       }
       state.map.invalidateSize();
       if (state.lastBounds) {
-        state.map.fitBounds(state.lastBounds, { padding: [20, 20], animate: false });
+        state.map.fitBounds(state.lastBounds, {
+          padding: [state.lastPadding, state.lastPadding],
+          animate: false,
+        });
+        applyZoomDelta(state.map, state.lastZoomDelta);
       }
     }
   });
@@ -348,6 +376,8 @@ function renderMaps(parsedFit, analysis) {
     segmentLatLngs: fullLatLngs,
     segmentColor: "#1c7c61",
     boundsLatLngs: fullLatLngs,
+    padding: 14,
+    zoomDelta: 1,
   });
 
   if (analysis.fastest100) {
@@ -362,7 +392,9 @@ function renderMaps(parsedFit, analysis) {
       contextLatLngs: fullLatLngs,
       segmentLatLngs: segment100LatLngs,
       segmentColor: "#da5a2a",
-      boundsLatLngs: fullLatLngs.length >= 2 ? fullLatLngs : segment100LatLngs,
+      boundsLatLngs: segment100LatLngs.length >= 2 ? segment100LatLngs : fullLatLngs,
+      padding: 14,
+      zoomDelta: 1,
     });
     map100NoteEl.textContent = segment100LatLngs.length >= 2
       ? `${formatDuration(analysis.fastest100.elapsedSec)} | ${formatSpeed(analysis.fastest100.avgSpeedKmh)}`
@@ -373,6 +405,8 @@ function renderMaps(parsedFit, analysis) {
       segmentLatLngs: [],
       segmentColor: "#da5a2a",
       boundsLatLngs: fullLatLngs,
+      padding: 14,
+      zoomDelta: 1,
     });
     map100NoteEl.textContent = "Segment 100 km neni k dispozici.";
   }
@@ -389,7 +423,9 @@ function renderMaps(parsedFit, analysis) {
       contextLatLngs: fullLatLngs,
       segmentLatLngs: segment1609LatLngs,
       segmentColor: "#2a5fda",
-      boundsLatLngs: fullLatLngs.length >= 2 ? fullLatLngs : segment1609LatLngs,
+      boundsLatLngs: segment1609LatLngs.length >= 2 ? segment1609LatLngs : fullLatLngs,
+      padding: 14,
+      zoomDelta: 1,
     });
     map1609NoteEl.textContent = segment1609LatLngs.length >= 2
       ? `${formatDuration(analysis.fastest1609.elapsedSec)} | ${formatSpeed(analysis.fastest1609.avgSpeedKmh)}`
@@ -400,6 +436,8 @@ function renderMaps(parsedFit, analysis) {
       segmentLatLngs: [],
       segmentColor: "#2a5fda",
       boundsLatLngs: fullLatLngs,
+      padding: 14,
+      zoomDelta: 1,
     });
     map1609NoteEl.textContent = "Segment 1609 m neni k dispozici.";
   }
@@ -483,7 +521,14 @@ function drawContextAndSegment(state, payload) {
 
   clearOverlayLayers(state);
 
-  const { contextLatLngs, segmentLatLngs, segmentColor, boundsLatLngs } = payload;
+  const {
+    contextLatLngs,
+    segmentLatLngs,
+    segmentColor,
+    boundsLatLngs,
+    padding = 20,
+    zoomDelta = 0,
+  } = payload;
 
   if (contextLatLngs.length >= 2) {
     const contextLayer = window.L.polyline(contextLatLngs, {
@@ -506,14 +551,27 @@ function drawContextAndSegment(state, payload) {
 
   const bounds = buildBoundsFromLatLngs(boundsLatLngs);
   if (bounds) {
-    map.fitBounds(bounds, { padding: [20, 20], animate: false });
+    map.fitBounds(bounds, { padding: [padding, padding], animate: false });
+    applyZoomDelta(map, zoomDelta);
     state.lastBounds = bounds;
+    state.lastPadding = padding;
+    state.lastZoomDelta = zoomDelta;
   } else {
     map.setView(MAP_DEFAULT_CENTER, 7);
     state.lastBounds = null;
+    state.lastPadding = 20;
+    state.lastZoomDelta = 0;
   }
 
   map.invalidateSize();
+}
+
+function applyZoomDelta(map, zoomDelta) {
+  if (!Number.isFinite(zoomDelta) || zoomDelta === 0) {
+    return;
+  }
+  const targetZoom = Math.min(18, map.getZoom() + zoomDelta);
+  map.setZoom(targetZoom, { animate: false });
 }
 
 function addSegmentEndpoints(map, state, segmentLatLngs, segmentColor) {
