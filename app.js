@@ -32,7 +32,6 @@ const mapState = {
     overlays: [],
     lastBounds: null,
     lastPadding: 20,
-    lastZoomDelta: 0,
   },
   km100: {
     key: "km100",
@@ -41,7 +40,6 @@ const mapState = {
     overlays: [],
     lastBounds: null,
     lastPadding: 20,
-    lastZoomDelta: 0,
   },
   m1609: {
     key: "m1609",
@@ -50,7 +48,6 @@ const mapState = {
     overlays: [],
     lastBounds: null,
     lastPadding: 20,
-    lastZoomDelta: 0,
   },
 };
 
@@ -71,7 +68,6 @@ window.addEventListener("resize", () => {
           padding: [state.lastPadding, state.lastPadding],
           animate: false,
         });
-        applyZoomDelta(state.map, state.lastZoomDelta);
       }
     }
   });
@@ -386,7 +382,6 @@ function renderMaps(parsedFit, analysis) {
     segmentColor: "#1c7c61",
     boundsLatLngs: fullLatLngs,
     padding: 14,
-    zoomDelta: 1,
   });
 
   if (analysis.fastest100) {
@@ -403,7 +398,6 @@ function renderMaps(parsedFit, analysis) {
       segmentColor: "#da5a2a",
       boundsLatLngs: fullLatLngs.length >= 2 ? fullLatLngs : segment100LatLngs,
       padding: 14,
-      zoomDelta: 1,
     });
     map100NoteEl.textContent = segment100LatLngs.length >= 2
       ? `${formatDuration(analysis.fastest100.elapsedSec)} | ${formatSpeed(analysis.fastest100.avgSpeedKmh)}`
@@ -415,7 +409,6 @@ function renderMaps(parsedFit, analysis) {
       segmentColor: "#da5a2a",
       boundsLatLngs: fullLatLngs,
       padding: 14,
-      zoomDelta: 1,
     });
     map100NoteEl.textContent = "Segment 100 km neni k dispozici.";
   }
@@ -434,7 +427,6 @@ function renderMaps(parsedFit, analysis) {
       segmentColor: "#2a5fda",
       boundsLatLngs: fullLatLngs.length >= 2 ? fullLatLngs : segment1609LatLngs,
       padding: 14,
-      zoomDelta: 1,
     });
     map1609NoteEl.textContent = segment1609LatLngs.length >= 2
       ? `${formatDuration(analysis.fastest1609.elapsedSec)} | ${formatSpeed(analysis.fastest1609.avgSpeedKmh)}`
@@ -446,7 +438,6 @@ function renderMaps(parsedFit, analysis) {
       segmentColor: "#2a5fda",
       boundsLatLngs: fullLatLngs,
       padding: 14,
-      zoomDelta: 1,
     });
     map1609NoteEl.textContent = "Segment 1609 m neni k dispozici.";
   }
@@ -536,7 +527,6 @@ function drawContextAndSegment(state, payload) {
     segmentColor,
     boundsLatLngs,
     padding = 20,
-    zoomDelta = 0,
   } = payload;
 
   if (contextLatLngs.length >= 2) {
@@ -561,26 +551,15 @@ function drawContextAndSegment(state, payload) {
   const bounds = buildBoundsFromLatLngs(boundsLatLngs);
   if (bounds) {
     map.fitBounds(bounds, { padding: [padding, padding], animate: false });
-    applyZoomDelta(map, zoomDelta);
     state.lastBounds = bounds;
     state.lastPadding = padding;
-    state.lastZoomDelta = zoomDelta;
   } else {
     map.setView(MAP_DEFAULT_CENTER, 7);
     state.lastBounds = null;
     state.lastPadding = 20;
-    state.lastZoomDelta = 0;
   }
 
   map.invalidateSize();
-}
-
-function applyZoomDelta(map, zoomDelta) {
-  if (!Number.isFinite(zoomDelta) || zoomDelta === 0) {
-    return;
-  }
-  const targetZoom = Math.min(18, map.getZoom() + zoomDelta);
-  map.setZoom(targetZoom, { animate: false });
 }
 
 function addSegmentEndpoints(map, state, segmentLatLngs, segmentColor) {
