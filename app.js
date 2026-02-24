@@ -2,6 +2,7 @@ const TARGET_DISTANCE_M = 100_000;
 const TARGET_ASCENT_M = 1_609;
 const SEMICIRCLES_TO_DEGREES = 180 / 2_147_483_648;
 const FIT_TO_UNIX_EPOCH_SEC = 631065600;
+const APP_BUILD = "2026-02-24T13:22Z";
 
 const fitFileInput = document.getElementById("fitFile");
 const statusEl = document.getElementById("status");
