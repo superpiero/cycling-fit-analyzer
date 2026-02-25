@@ -351,8 +351,20 @@ function readQueryParam(query, key) {
 }
 
 async function readJsonBody(req) {
+  if (Buffer.isBuffer(req.body)) {
+    const rawBuffer = req.body.toString("utf8");
+    if (!rawBuffer) {
+      return {};
+    }
+    try {
+      return JSON.parse(rawBuffer);
+    } catch (_error) {
+      throw httpError(400, "Tělo požadavku není validní JSON.");
+    }
+  }
+
   if (req.body && typeof req.body === "object") {
-    return req.body;
+    return req.body || {};
   }
 
   if (typeof req.body === "string" && req.body.length > 0) {
