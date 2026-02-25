@@ -142,7 +142,25 @@ async function getLatestEntries(limit) {
   const metaBlobs = await listMetaBlobs();
   const selected = metaBlobs.slice(0, limit);
   const entries = await Promise.all(selected.map((blob) => fetchEntryFromMetaBlob(blob)));
-  return entries.filter(Boolean);
+  const normalized = entries.filter(Boolean);
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  // Fallback: if metadata files exist but cannot be fetched, still return placeholders.
+  return selected.map((blob) => {
+    const id = extractIdFromPath(blob.pathname) || `unknown-${Date.now()}`;
+    return {
+      id,
+      fileName: `Jízda #${id}`,
+      createdAtMs: Number.isFinite(Date.parse(blob.uploadedAt || "")) ? Date.parse(blob.uploadedAt) : Date.now(),
+      totalDistanceM: null,
+      totalAscentM: null,
+      avgSpeedKmh: null,
+      filePathname: null,
+      fileUrl: null,
+    };
+  });
 }
 
 async function getEntryById(id) {
@@ -170,15 +188,7 @@ async function fetchEntryFromMetaBlob(blob) {
     return null;
   }
 
-  const response = await fetch(metaReadUrl, {
-    cache: "no-store",
-    headers: getBlobFetchHeaders(),
-  });
-  if (!response.ok) {
-    return null;
-  }
-
-  const raw = await response.json();
+  const raw = await fetchBlobJson(metaReadUrl);
   if (!raw || typeof raw !== "object") {
     return null;
   }
@@ -292,15 +302,10 @@ async function getEntryFileBase64(entry) {
     return null;
   }
 
-  const response = await fetch(readUrl, {
-    cache: "no-store",
-    headers: getBlobFetchHeaders(),
-  });
-  if (!response.ok) {
+  const arrayBuffer = await fetchBlobArrayBuffer(readUrl);
+  if (!arrayBuffer) {
     return null;
   }
-
-  const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer).toString("base64");
 }
 
@@ -339,6 +344,54 @@ function getBlobFetchHeaders() {
   return {
     Authorization: `Bearer ${BLOB_TOKEN}`,
   };
+}
+
+async function fetchBlobJson(url) {
+  const withAuth = await fetchWithOptionalAuth(url, true);
+  if (withAuth?.ok) {
+    try {
+      return await withAuth.response.json();
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  const withoutAuth = await fetchWithOptionalAuth(url, false);
+  if (withoutAuth?.ok) {
+    try {
+      return await withoutAuth.response.json();
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+async function fetchBlobArrayBuffer(url) {
+  const withAuth = await fetchWithOptionalAuth(url, true);
+  if (withAuth?.ok) {
+    return withAuth.response.arrayBuffer();
+  }
+
+  const withoutAuth = await fetchWithOptionalAuth(url, false);
+  if (withoutAuth?.ok) {
+    return withoutAuth.response.arrayBuffer();
+  }
+
+  return null;
+}
+
+async function fetchWithOptionalAuth(url, useAuthHeader) {
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: useAuthHeader ? getBlobFetchHeaders() : undefined,
+    });
+    return { ok: response.ok, response };
+  } catch (_error) {
+    return { ok: false, response: null };
+  }
 }
 
 async function runWriteDiagnostic() {
