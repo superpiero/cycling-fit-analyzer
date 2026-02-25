@@ -27,9 +27,11 @@ Jednoduchá webová appka pro analýzu jízdy z `.fit` souboru.
   - celá vyjížďka
   - segment 100 km nad celou trasou
   - segment 1609 m nad celou trasou
-- Historie posledních 2 uploadů:
+- Historie posledních 5 uploadů:
   - na úvodní straně pod uploadem
   - rychlý proklik na výsledkovou obrazovku konkrétní jízdy
+  - smazání položky historie přes tlačítko `×`
+  - deduplikace: stejný název + stejná velikost souboru přepíše původní záznam
   - globální historie napříč zařízeními (uložená na Vercelu)
 
 ## Globální historie (Vercel Blob)

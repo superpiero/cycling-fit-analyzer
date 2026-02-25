@@ -162,34 +162,48 @@ h2 {
 }
 
 .history-list {
-  display: grid;
+  display: flex;
   gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
 }
 
 .history-item {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 12px;
-  align-items: center;
+  position: relative;
+  flex: 0 0 calc((100% - 4 * 10px) / 5);
+  min-width: 180px;
+  max-width: 230px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
-  padding: 10px 12px;
+  min-height: 112px;
+}
+
+.history-open {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  text-decoration: none;
+  color: inherit;
+  padding: 12px;
+  min-height: 112px;
 }
 
 .history-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   border: 1px solid #d9c5a9;
   background: linear-gradient(145deg, #fff5e8, #fee4cb);
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.06em;
   font-family: "IBM Plex Mono", "Fira Code", monospace;
   color: #9b4f25;
   font-weight: 700;
+  flex: 0 0 auto;
 }
 
 .history-main {
@@ -206,24 +220,41 @@ h2 {
 }
 
 .history-meta {
-  margin: 5px 0 0;
-  font-size: 13px;
+  margin: 4px 0 0;
+  font-size: 12px;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.history-link {
-  text-decoration: none;
-  font-size: 13px;
-  color: var(--accent-ink);
-  background: linear-gradient(90deg, #d34717, #ef7d3e);
-  padding: 8px 12px;
-  border-radius: 999px;
-  font-weight: 700;
+.history-date {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--muted);
   white-space: nowrap;
 }
 
-.history-link:hover {
-  filter: saturate(1.08);
+.history-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid #dfc2ad;
+  background: #fff7f0;
+  color: #9a4a1e;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.history-delete:hover {
+  background: #ffe9da;
 }
 
 .maps-grid {
@@ -277,12 +308,8 @@ h2 {
   }
 
   .history-item {
-    grid-template-columns: auto 1fr;
-  }
-
-  .history-link {
-    grid-column: 1 / -1;
-    width: fit-content;
+    flex-basis: calc((100% - 10px) / 2);
+    min-width: 170px;
   }
 
   .maps-grid {

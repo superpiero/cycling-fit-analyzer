@@ -1,6 +1,6 @@
 const { del, list, put } = require("@vercel/blob");
 
-const MAX_HISTORY_ITEMS = 2;
+const MAX_HISTORY_ITEMS = 5;
 const HISTORY_PREFIX = "default/history/";
 const META_PREFIX = `${HISTORY_PREFIX}meta-`;
 const FIT_PREFIX = `${HISTORY_PREFIX}fit-`;
@@ -21,7 +21,12 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    res.setHeader("Allow", "GET, POST");
+    if (req.method === "DELETE") {
+      await handleDelete(req, res);
+      return;
+    }
+
+    res.setHeader("Allow", "GET, POST, DELETE");
     res.status(405).json({ error: "Metoda není podporovaná." });
   } catch (error) {
     sendError(res, error);
@@ -86,6 +91,7 @@ async function handlePost(req, res) {
   const fileName = typeof body.fileName === "string" ? body.fileName : "ride.fit";
   const mimeType = typeof body.mimeType === "string" ? body.mimeType : "application/octet-stream";
   const fileBase64 = typeof body.fileBase64 === "string" ? body.fileBase64 : "";
+  const fileSizeBytes = Number(body.fileSizeBytes);
 
   if (!fileBase64) {
     throw httpError(400, "Chybí obsah FIT souboru.");
@@ -102,9 +108,17 @@ async function handlePost(req, res) {
     throw httpError(400, "FIT soubor je prázdný.");
   }
 
-  const id = createHistoryId();
+  const normalizedFileSizeBytes =
+    Number.isFinite(fileSizeBytes) && fileSizeBytes >= 0 ? Math.round(fileSizeBytes) : null;
+
+  const duplicateEntry =
+    typeof fileName === "string" && fileName.length > 0 && normalizedFileSizeBytes !== null
+      ? await findDuplicateEntry(fileName, normalizedFileSizeBytes)
+      : null;
+
+  const id = duplicateEntry?.id || createHistoryId();
   const safeName = sanitizeFileName(fileName);
-  const fitPathname = `${FIT_PREFIX}${id}-${safeName}`;
+  const fitPathname = duplicateEntry?.filePathname || `${FIT_PREFIX}${id}-${safeName}`;
   const fitBlob = await put(fitPathname, fileBuffer, {
     access: BLOB_ACCESS,
     addRandomSuffix: false,
@@ -119,6 +133,7 @@ async function handlePost(req, res) {
   const entry = {
     id,
     fileName,
+    fileSizeBytes: normalizedFileSizeBytes,
     createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
     totalDistanceM: Number.isFinite(totalDistanceM) ? totalDistanceM : null,
     totalAscentM: Number.isFinite(totalAscentM) ? totalAscentM : null,
@@ -127,7 +142,8 @@ async function handlePost(req, res) {
     fileUrl: getBlobReadUrl(fitBlob),
   };
 
-  const metaPathname = `${META_PREFIX}${id}.json`;
+  const metaPathname = duplicateEntry?.metaPathname || `${META_PREFIX}${id}.json`;
+  entry.metaPathname = metaPathname;
   await put(metaPathname, JSON.stringify(entry), {
     access: BLOB_ACCESS,
     addRandomSuffix: false,
@@ -136,6 +152,33 @@ async function handlePost(req, res) {
 
   await pruneHistoryToMax(MAX_HISTORY_ITEMS);
   res.status(201).json({ entry });
+}
+
+async function handleDelete(req, res) {
+  const id = readQueryParam(req.query, "id");
+  if (!id) {
+    throw httpError(400, "Chybí id záznamu pro smazání.");
+  }
+
+  const metaPathname = `${META_PREFIX}${id}.json`;
+  const response = await list({ prefix: metaPathname });
+  const exactMeta = response.blobs.find((blob) => blob.pathname === metaPathname);
+  if (!exactMeta) {
+    res.status(200).json({ ok: true, deleted: false });
+    return;
+  }
+
+  const raw = await fetchMetaPayload(exactMeta);
+  const targets = [exactMeta.pathname];
+
+  if (raw && typeof raw.filePathname === "string" && raw.filePathname.length > 0) {
+    targets.push(raw.filePathname);
+  } else if (raw && typeof raw.fileUrl === "string" && raw.fileUrl.length > 0) {
+    targets.push(raw.fileUrl);
+  }
+
+  await del([...new Set(targets)]);
+  res.status(200).json({ ok: true, deleted: true, id });
 }
 
 async function getLatestEntries(limit) {
@@ -183,6 +226,22 @@ async function listMetaBlobs() {
 }
 
 async function fetchEntryFromMetaBlob(blob) {
+  const raw = await fetchMetaPayload(blob);
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  if (typeof raw.filePathname === "string" && raw.filePathname.length > 0) {
+    raw.fileUrl = await resolveBlobReadUrl(raw.filePathname);
+  } else if (!raw.fileUrl && typeof raw.filePath === "string" && raw.filePath.length > 0) {
+    raw.filePathname = raw.filePath;
+    raw.fileUrl = await resolveBlobReadUrl(raw.filePathname);
+  }
+
+  return normalizeHistoryEntry(raw);
+}
+
+async function fetchMetaPayload(blob) {
   const metaReadUrl = getBlobReadUrl(blob);
   if (!metaReadUrl) {
     return null;
@@ -198,14 +257,40 @@ async function fetchEntryFromMetaBlob(blob) {
     raw.id = fallbackId;
   }
 
-  if (typeof raw.filePathname === "string" && raw.filePathname.length > 0) {
-    raw.fileUrl = await resolveBlobReadUrl(raw.filePathname);
-  } else if (!raw.fileUrl && typeof raw.filePath === "string" && raw.filePath.length > 0) {
-    raw.filePathname = raw.filePath;
-    raw.fileUrl = await resolveBlobReadUrl(raw.filePathname);
+  if (!raw.metaPathname && typeof blob.pathname === "string" && blob.pathname.length > 0) {
+    raw.metaPathname = blob.pathname;
   }
 
-  return normalizeHistoryEntry(raw);
+  return raw;
+}
+
+async function findDuplicateEntry(fileName, fileSizeBytes) {
+  const metaBlobs = await listMetaBlobs();
+  for (const metaBlob of metaBlobs) {
+    const raw = await fetchMetaPayload(metaBlob);
+    if (!raw) {
+      continue;
+    }
+    const sameName = raw.fileName === fileName;
+    const rawSize = Number(raw.fileSizeBytes);
+    const sameSize = Number.isFinite(rawSize) && rawSize === fileSizeBytes;
+    if (!sameName || !sameSize) {
+      continue;
+    }
+
+    const normalized = normalizeHistoryEntry(raw);
+    if (normalized) {
+      return normalized;
+    }
+
+    return {
+      id: normalizeId(raw.id) || extractIdFromPath(metaBlob.pathname),
+      filePathname: typeof raw.filePathname === "string" ? raw.filePathname : null,
+      metaPathname: typeof raw.metaPathname === "string" ? raw.metaPathname : metaBlob.pathname,
+      fileUrl: typeof raw.fileUrl === "string" ? raw.fileUrl : null,
+    };
+  }
+  return null;
 }
 
 async function pruneHistoryToMax(maxItems) {
@@ -249,6 +334,11 @@ function normalizeHistoryEntry(entry) {
     typeof entry.filePathname === "string" && entry.filePathname.length > 0
       ? entry.filePathname
       : null;
+  const metaPathname =
+    typeof entry.metaPathname === "string" && entry.metaPathname.length > 0
+      ? entry.metaPathname
+      : null;
+  const fileSizeBytes = Number(entry.fileSizeBytes);
 
   if (!fileUrl && !filePathname) {
     return null;
@@ -261,7 +351,9 @@ function normalizeHistoryEntry(entry) {
     totalDistanceM: Number.isFinite(totalDistanceM) ? totalDistanceM : null,
     totalAscentM: Number.isFinite(totalAscentM) ? totalAscentM : null,
     avgSpeedKmh: Number.isFinite(avgSpeedKmh) ? avgSpeedKmh : null,
+    fileSizeBytes: Number.isFinite(fileSizeBytes) ? fileSizeBytes : null,
     filePathname,
+    metaPathname,
     fileUrl,
   };
 }

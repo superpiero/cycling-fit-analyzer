@@ -5,7 +5,7 @@ const FIT_TO_UNIX_EPOCH_SEC = 631065600;
 const HISTORY_DB_NAME = "cyclingFitAnalyzer";
 const HISTORY_DB_VERSION = 1;
 const HISTORY_STORE_NAME = "rideHistory";
-const HISTORY_MAX_ITEMS = 2;
+const HISTORY_MAX_ITEMS = 5;
 const GLOBAL_HISTORY_ENDPOINT = "/api/history";
 
 const fitFileInput = document.getElementById("fitFile");
@@ -694,6 +694,11 @@ function createHistoryCard(entry) {
   const card = document.createElement("article");
   card.className = "history-item";
 
+  const openLink = document.createElement("a");
+  openLink.className = "history-open";
+  openLink.href = buildHistoryLink(entry.id);
+  openLink.title = "Otevřít záznam";
+
   const icon = document.createElement("div");
   icon.className = "history-icon";
   icon.textContent = "FIT";
@@ -709,17 +714,56 @@ function createHistoryCard(entry) {
   meta.className = "history-meta";
   const distance = Number.isFinite(entry.totalDistanceM) ? formatDistance(entry.totalDistanceM) : "-";
   const ascent = Number.isFinite(entry.totalAscentM) ? formatAscent(entry.totalAscentM) : "-";
-  meta.textContent = `${distance} | ${ascent} | ${formatHistoryDate(entry.createdAtMs)}`;
+  meta.textContent = `${distance} | ${ascent}`;
 
-  main.append(name, meta);
+  const date = document.createElement("p");
+  date.className = "history-date";
+  date.textContent = formatHistoryDate(entry.createdAtMs);
 
-  const link = document.createElement("a");
-  link.className = "history-link";
-  link.textContent = "Otevřít";
-  link.href = buildHistoryLink(entry.id);
+  main.append(name, meta, date);
+  openLink.append(icon, main);
 
-  card.append(icon, main, link);
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "history-delete";
+  deleteBtn.title = "Smazat z historie";
+  deleteBtn.setAttribute("aria-label", "Smazat z historie");
+  deleteBtn.textContent = "×";
+  deleteBtn.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    await deleteHistoryEntry(entry);
+  });
+
+  card.append(openLink, deleteBtn);
   return card;
+}
+
+async function deleteHistoryEntry(entry) {
+  const displayName = entry?.fileName || "tento soubor";
+  const confirmed = window.confirm(`Smazat ${displayName} z historie?`);
+  if (!confirmed) {
+    return;
+  }
+
+  let deleted = false;
+  try {
+    deleted = await deleteRideHistoryByIdGlobal(entry.id);
+  } catch (error) {
+    console.error("Mazání globální historie selhalo, zkouším lokální:", error);
+  }
+
+  if (!deleted) {
+    deleted = await deleteRideHistoryByIdLocal(entry.id);
+  }
+
+  if (deleted) {
+    statusEl.textContent = "Záznam byl smazán z historie.";
+  } else {
+    statusEl.textContent = "Záznam se nepodařilo smazat.";
+  }
+
+  await renderHistoryList();
 }
 
 async function addRideToHistory(file, analysis) {
@@ -744,18 +788,40 @@ async function addRideToHistory(file, analysis) {
 
 async function addRideToLocalHistory(file, analysis) {
   try {
-    const db = await openHistoryDb();
-
-    const addTx = db.transaction(HISTORY_STORE_NAME, "readwrite");
-    const addStore = addTx.objectStore(HISTORY_STORE_NAME);
-    addStore.add({
+    const payload = {
       fileName: file.name,
       fileBlob: file,
+      fileSizeBytes: Number.isFinite(file.size) ? file.size : null,
       createdAtMs: Date.now(),
       totalDistanceM: analysis.totalDistanceM,
       totalAscentM: analysis.totalAscentM,
       avgSpeedKmh: analysis.avgSpeedKmh,
-    });
+    };
+
+    const db = await openHistoryDb();
+
+    const addTx = db.transaction(HISTORY_STORE_NAME, "readwrite");
+    const addStore = addTx.objectStore(HISTORY_STORE_NAME);
+    const existingEntries = await requestToPromise(addStore.getAll());
+    const hasPayloadSize = Number.isFinite(payload.fileSizeBytes);
+    const duplicate = existingEntries.find(
+      (item) =>
+        item &&
+        item.fileName === payload.fileName &&
+        hasPayloadSize &&
+        Number.isFinite(Number(item.fileSizeBytes)) &&
+        Number(item.fileSizeBytes) === Number(payload.fileSizeBytes)
+    );
+
+    if (duplicate && Number.isInteger(duplicate.id)) {
+      addStore.put({
+        ...duplicate,
+        ...payload,
+        id: duplicate.id,
+      });
+    } else {
+      addStore.add(payload);
+    }
     await transactionToPromise(addTx);
 
     const pruneTx = db.transaction(HISTORY_STORE_NAME, "readwrite");
@@ -835,6 +901,7 @@ async function getRideHistoryByIdLocal(id) {
 async function addRideToGlobalHistory(file, analysis) {
   const payload = {
     fileName: file.name,
+    fileSizeBytes: Number.isFinite(file.size) ? file.size : null,
     mimeType: file.type || "application/octet-stream",
     createdAtMs: Date.now(),
     totalDistanceM: analysis.totalDistanceM,
@@ -855,6 +922,43 @@ async function addRideToGlobalHistory(file, analysis) {
   if (!response.ok) {
     throw new Error(data.error || `HTTP ${response.status}`);
   }
+}
+
+async function deleteRideHistoryByIdGlobal(id) {
+  const response = await fetch(`${GLOBAL_HISTORY_ENDPOINT}?id=${encodeURIComponent(String(id))}`, {
+    method: "DELETE",
+  });
+  const data = await parseApiJson(response);
+
+  if (response.status === 404) {
+    return false;
+  }
+  if (!response.ok) {
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return data.deleted !== false;
+}
+
+async function deleteRideHistoryByIdLocal(id) {
+  if (!("indexedDB" in window)) {
+    return false;
+  }
+
+  const parsedId = Number(id);
+  if (!Number.isInteger(parsedId) || parsedId <= 0) {
+    return false;
+  }
+
+  const db = await openHistoryDb();
+  const tx = db.transaction(HISTORY_STORE_NAME, "readwrite");
+  const store = tx.objectStore(HISTORY_STORE_NAME);
+  const existing = await requestToPromise(store.get(parsedId));
+  if (existing) {
+    store.delete(parsedId);
+  }
+  await transactionToPromise(tx);
+  db.close();
+  return Boolean(existing);
 }
 
 async function getRecentRideHistoryGlobal(limit) {
@@ -964,6 +1068,7 @@ function normalizeHistoryEntry(entry) {
   const totalDistanceM = Number(entry.totalDistanceM);
   const totalAscentM = Number(entry.totalAscentM);
   const avgSpeedKmh = Number(entry.avgSpeedKmh);
+  const fileSizeBytes = Number(entry.fileSizeBytes);
 
   return {
     id,
@@ -972,6 +1077,7 @@ function normalizeHistoryEntry(entry) {
     totalDistanceM: Number.isFinite(totalDistanceM) ? totalDistanceM : null,
     totalAscentM: Number.isFinite(totalAscentM) ? totalAscentM : null,
     avgSpeedKmh: Number.isFinite(avgSpeedKmh) ? avgSpeedKmh : null,
+    fileSizeBytes: Number.isFinite(fileSizeBytes) ? fileSizeBytes : null,
     fileUrl: typeof entry.fileUrl === "string" ? entry.fileUrl : null,
   };
 }
