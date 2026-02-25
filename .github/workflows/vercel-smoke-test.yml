@@ -27,23 +27,34 @@ jobs:
         env:
           BASE_URL: ${{ steps.target.outputs.base_url }}
         run: |
+          set -euo pipefail
           for i in $(seq 1 24); do
-            if curl -fsS "$BASE_URL/api/history?diag=1" >/dev/null; then
+            HTTP_CODE="$(curl -sS -o /tmp/diag_ready.json -w "%{http_code}" "$BASE_URL/api/history?diag=1" || true)"
+            if [ "$HTTP_CODE" = "200" ]; then
               echo "API is reachable"
               exit 0
             fi
-            echo "[$i/24] waiting for Vercel deployment..."
+            echo "[$i/24] waiting for Vercel deployment... (HTTP $HTTP_CODE)"
             sleep 10
           done
           echo "Timed out waiting for deployment"
+          echo "Last response body:"
+          cat /tmp/diag_ready.json || true
           exit 1
 
       - name: Check blob write diagnostic
         env:
           BASE_URL: ${{ steps.target.outputs.base_url }}
         run: |
-          DIAG_JSON="$(curl -fsS "$BASE_URL/api/history?diag=1&diagWrite=1")"
+          set -euo pipefail
+          DIAG_STATUS="$(curl -sS -o /tmp/diag_write.json -w "%{http_code}" "$BASE_URL/api/history?diag=1&diagWrite=1")"
+          DIAG_JSON="$(cat /tmp/diag_write.json)"
           echo "$DIAG_JSON" | jq .
+
+          if [ "$DIAG_STATUS" != "200" ]; then
+            echo "Diagnostic endpoint failed with HTTP $DIAG_STATUS"
+            exit 1
+          fi
 
           TOKEN_PRESENT="$(echo "$DIAG_JSON" | jq -r '.tokenPresent')"
           WRITE_OK="$(echo "$DIAG_JSON" | jq -r '.writeCheck.ok')"
@@ -63,7 +74,12 @@ jobs:
         env:
           BASE_URL: ${{ steps.target.outputs.base_url }}
         run: |
-          HISTORY_JSON="$(curl -fsS "$BASE_URL/api/history?limit=2")"
+          set -euo pipefail
+          HISTORY_STATUS="$(curl -sS -o /tmp/history_limit.json -w "%{http_code}" "$BASE_URL/api/history?limit=2")"
+          HISTORY_JSON="$(cat /tmp/history_limit.json)"
           echo "$HISTORY_JSON" | jq .
+          if [ "$HISTORY_STATUS" != "200" ]; then
+            echo "History endpoint failed with HTTP $HISTORY_STATUS"
+            exit 1
+          fi
           echo "$HISTORY_JSON" | jq -e '.entries | type == "array"' >/dev/null
-
