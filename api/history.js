@@ -1,7 +1,7 @@
 const { del, list, put } = require("@vercel/blob");
 
 const MAX_HISTORY_ITEMS = 2;
-const HISTORY_PREFIX = "history/";
+const HISTORY_PREFIX = "default/history/";
 const META_PREFIX = `${HISTORY_PREFIX}meta-`;
 const FIT_PREFIX = `${HISTORY_PREFIX}fit-`;
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
@@ -28,6 +28,20 @@ module.exports = async function handler(req, res) {
 };
 
 async function handleGet(req, res) {
+  const diag = readQueryParam(req.query, "diag");
+  if (diag === "1" || diag === "true") {
+    const metaBlobs = await listMetaBlobs();
+    res.status(200).json({
+      ok: true,
+      tokenPresent: Boolean(BLOB_TOKEN),
+      historyPrefix: HISTORY_PREFIX,
+      metaCount: metaBlobs.length,
+      sampleMetaPathnames: metaBlobs.slice(0, 5).map((item) => item.pathname),
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
   const id = readQueryParam(req.query, "id");
   if (id) {
     const entry = await getEntryById(id);
