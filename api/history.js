@@ -31,12 +31,19 @@ async function handleGet(req, res) {
   const diag = readQueryParam(req.query, "diag");
   if (diag === "1" || diag === "true") {
     const metaBlobs = await listMetaBlobs();
+    const diagWrite = readQueryParam(req.query, "diagWrite");
+    let writeCheck = null;
+    if (diagWrite === "1" || diagWrite === "true") {
+      writeCheck = await runWriteDiagnostic();
+    }
+
     res.status(200).json({
       ok: true,
       tokenPresent: Boolean(BLOB_TOKEN),
       historyPrefix: HISTORY_PREFIX,
       metaCount: metaBlobs.length,
       sampleMetaPathnames: metaBlobs.slice(0, 5).map((item) => item.pathname),
+      writeCheck,
       timestamp: new Date().toISOString(),
     });
     return;
@@ -333,6 +340,30 @@ function getBlobFetchHeaders() {
   };
 }
 
+async function runWriteDiagnostic() {
+  const probeId = `diag-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const probePath = `${HISTORY_PREFIX}${probeId}.txt`;
+
+  try {
+    await put(probePath, "ok", {
+      access: "private",
+      addRandomSuffix: false,
+      contentType: "text/plain; charset=utf-8",
+    });
+
+    const listed = await list({ prefix: probePath });
+    const exists = listed.blobs.some((blob) => blob.pathname === probePath);
+    await del([probePath]);
+    return { ok: true, probePath, existsAfterPut: exists };
+  } catch (error) {
+    return {
+      ok: false,
+      probePath,
+      message: error?.message || "Neznámá chyba write diagnostiky.",
+    };
+  }
+}
+
 function sanitizeFileName(fileName) {
   const cleaned = String(fileName || "ride.fit")
     .trim()
@@ -358,6 +389,31 @@ async function readJsonBody(req) {
     }
     try {
       return JSON.parse(rawBuffer);
+    } catch (_error) {
+      throw httpError(400, "Tělo požadavku není validní JSON.");
+    }
+  }
+
+  if (ArrayBuffer.isView(req.body)) {
+    const viewBuffer = Buffer.from(req.body.buffer, req.body.byteOffset, req.body.byteLength);
+    const rawView = viewBuffer.toString("utf8");
+    if (!rawView) {
+      return {};
+    }
+    try {
+      return JSON.parse(rawView);
+    } catch (_error) {
+      throw httpError(400, "Tělo požadavku není validní JSON.");
+    }
+  }
+
+  if (req.body instanceof ArrayBuffer) {
+    const rawArrayBuffer = Buffer.from(req.body).toString("utf8");
+    if (!rawArrayBuffer) {
+      return {};
+    }
+    try {
+      return JSON.parse(rawArrayBuffer);
     } catch (_error) {
       throw httpError(400, "Tělo požadavku není validní JSON.");
     }
