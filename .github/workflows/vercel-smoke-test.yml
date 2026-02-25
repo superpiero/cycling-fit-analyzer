@@ -1,0 +1,69 @@
+name: Vercel Smoke Test
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_BASE_URL: https://cycling-fit-analyzer.vercel.app
+      VERCEL_PROD_URL: ${{ vars.VERCEL_PROD_URL }}
+    steps:
+      - name: Resolve target URL
+        id: target
+        run: |
+          BASE_URL="$VERCEL_PROD_URL"
+          if [ -z "$BASE_URL" ]; then
+            BASE_URL="$DEFAULT_BASE_URL"
+          fi
+          echo "base_url=$BASE_URL" >> "$GITHUB_OUTPUT"
+          echo "Testing $BASE_URL"
+
+      - name: Wait for deployment readiness
+        env:
+          BASE_URL: ${{ steps.target.outputs.base_url }}
+        run: |
+          for i in $(seq 1 24); do
+            if curl -fsS "$BASE_URL/api/history?diag=1" >/dev/null; then
+              echo "API is reachable"
+              exit 0
+            fi
+            echo "[$i/24] waiting for Vercel deployment..."
+            sleep 10
+          done
+          echo "Timed out waiting for deployment"
+          exit 1
+
+      - name: Check blob write diagnostic
+        env:
+          BASE_URL: ${{ steps.target.outputs.base_url }}
+        run: |
+          DIAG_JSON="$(curl -fsS "$BASE_URL/api/history?diag=1&diagWrite=1")"
+          echo "$DIAG_JSON" | jq .
+
+          TOKEN_PRESENT="$(echo "$DIAG_JSON" | jq -r '.tokenPresent')"
+          WRITE_OK="$(echo "$DIAG_JSON" | jq -r '.writeCheck.ok')"
+          EXISTS_AFTER_PUT="$(echo "$DIAG_JSON" | jq -r '.writeCheck.existsAfterPut')"
+
+          if [ "$TOKEN_PRESENT" != "true" ]; then
+            echo "BLOB_READ_WRITE_TOKEN is not available in deployment"
+            exit 1
+          fi
+
+          if [ "$WRITE_OK" != "true" ] || [ "$EXISTS_AFTER_PUT" != "true" ]; then
+            echo "Blob write diagnostic failed"
+            exit 1
+          fi
+
+      - name: Check history endpoint shape
+        env:
+          BASE_URL: ${{ steps.target.outputs.base_url }}
+        run: |
+          HISTORY_JSON="$(curl -fsS "$BASE_URL/api/history?limit=2")"
+          echo "$HISTORY_JSON" | jq .
+          echo "$HISTORY_JSON" | jq -e '.entries | type == "array"' >/dev/null
+
