@@ -724,13 +724,22 @@ async function addRideToHistory(file, analysis) {
     return;
   }
 
+  let storedGlobally = false;
   try {
     await addRideToGlobalHistory(file, analysis);
-    return;
+    storedGlobally = true;
   } catch (error) {
     console.error("Uložení globální historie selhalo, přepínám na lokální:", error);
   }
 
+  if (storedGlobally) {
+    return;
+  }
+
+  await addRideToLocalHistory(file, analysis);
+}
+
+async function addRideToLocalHistory(file, analysis) {
   try {
     const db = await openHistoryDb();
 
@@ -762,11 +771,18 @@ async function addRideToHistory(file, analysis) {
 
 async function getRecentRideHistory(limit) {
   try {
-    return await getRecentRideHistoryGlobal(limit);
+    const globalEntries = await getRecentRideHistoryGlobal(limit);
+    if (globalEntries.length > 0) {
+      return globalEntries;
+    }
   } catch (error) {
     console.error("Načtení globální historie selhalo, používám lokální:", error);
   }
 
+  return getRecentRideHistoryLocal(limit);
+}
+
+async function getRecentRideHistoryLocal(limit) {
   if (!("indexedDB" in window)) {
     return [];
   }
@@ -791,6 +807,10 @@ async function getRideHistoryById(id) {
     console.error("Načtení globálního záznamu selhalo, hledám lokálně:", error);
   }
 
+  return getRideHistoryByIdLocal(id);
+}
+
+async function getRideHistoryByIdLocal(id) {
   if (!("indexedDB" in window)) {
     return null;
   }

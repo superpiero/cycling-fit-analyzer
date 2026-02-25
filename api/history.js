@@ -70,7 +70,7 @@ async function handlePost(req, res) {
   const safeName = sanitizeFileName(fileName);
   const fitPathname = `${FIT_PREFIX}${id}-${safeName}`;
   const fitBlob = await put(fitPathname, fileBuffer, {
-    access: "public",
+    access: "private",
     addRandomSuffix: false,
     contentType: mimeType,
   });
@@ -87,12 +87,13 @@ async function handlePost(req, res) {
     totalDistanceM: Number.isFinite(totalDistanceM) ? totalDistanceM : null,
     totalAscentM: Number.isFinite(totalAscentM) ? totalAscentM : null,
     avgSpeedKmh: Number.isFinite(avgSpeedKmh) ? avgSpeedKmh : null,
-    fileUrl: fitBlob.url,
+    filePathname: fitPathname,
+    fileUrl: getBlobReadUrl(fitBlob),
   };
 
   const metaPathname = `${META_PREFIX}${id}.json`;
   await put(metaPathname, JSON.stringify(entry), {
-    access: "public",
+    access: "private",
     addRandomSuffix: false,
     contentType: "application/json; charset=utf-8",
   });
@@ -128,7 +129,12 @@ async function listMetaBlobs() {
 }
 
 async function fetchEntryFromMetaBlob(blob) {
-  const response = await fetch(blob.url, { cache: "no-store" });
+  const metaReadUrl = getBlobReadUrl(blob);
+  if (!metaReadUrl) {
+    return null;
+  }
+
+  const response = await fetch(metaReadUrl, { cache: "no-store" });
   if (!response.ok) {
     return null;
   }
@@ -143,6 +149,13 @@ async function fetchEntryFromMetaBlob(blob) {
     raw.id = fallbackId;
   }
 
+  if (typeof raw.filePathname === "string" && raw.filePathname.length > 0) {
+    raw.fileUrl = await resolveBlobReadUrl(raw.filePathname);
+  } else if (!raw.fileUrl && typeof raw.filePath === "string" && raw.filePath.length > 0) {
+    raw.filePathname = raw.filePath;
+    raw.fileUrl = await resolveBlobReadUrl(raw.filePathname);
+  }
+
   return normalizeHistoryEntry(raw);
 }
 
@@ -152,10 +165,14 @@ async function pruneHistoryToMax(maxItems) {
 
   for (const staleMetaBlob of staleBlobs) {
     const staleEntry = await fetchEntryFromMetaBlob(staleMetaBlob);
-    const targets = [staleMetaBlob.url];
+    const targets = [staleMetaBlob.pathname];
 
-    if (staleEntry && typeof staleEntry.fileUrl === "string" && staleEntry.fileUrl.length > 0) {
-      targets.push(staleEntry.fileUrl);
+    if (
+      staleEntry &&
+      typeof staleEntry.filePathname === "string" &&
+      staleEntry.filePathname.length > 0
+    ) {
+      targets.push(staleEntry.filePathname);
     }
 
     const uniqueTargets = [...new Set(targets)];
@@ -190,6 +207,10 @@ function normalizeHistoryEntry(entry) {
     totalDistanceM: Number.isFinite(totalDistanceM) ? totalDistanceM : null,
     totalAscentM: Number.isFinite(totalAscentM) ? totalAscentM : null,
     avgSpeedKmh: Number.isFinite(avgSpeedKmh) ? avgSpeedKmh : null,
+    filePathname:
+      typeof entry.filePathname === "string" && entry.filePathname.length > 0
+        ? entry.filePathname
+        : null,
     fileUrl,
   };
 }
@@ -212,6 +233,29 @@ function normalizeId(value) {
 function createHistoryId() {
   const random = Math.random().toString(36).slice(2, 8);
   return `${Date.now()}-${random}`;
+}
+
+async function resolveBlobReadUrl(pathname) {
+  try {
+    const response = await list({ prefix: pathname });
+    const exactMatch = response.blobs.find((blob) => blob.pathname === pathname);
+    return getBlobReadUrl(exactMatch);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getBlobReadUrl(blobInfo) {
+  if (!blobInfo || typeof blobInfo !== "object") {
+    return null;
+  }
+  if (typeof blobInfo.downloadUrl === "string" && blobInfo.downloadUrl.length > 0) {
+    return blobInfo.downloadUrl;
+  }
+  if (typeof blobInfo.url === "string" && blobInfo.url.length > 0) {
+    return blobInfo.url;
+  }
+  return null;
 }
 
 function sanitizeFileName(fileName) {
