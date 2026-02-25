@@ -6,6 +6,7 @@ const HISTORY_DB_NAME = "cyclingFitAnalyzer";
 const HISTORY_DB_VERSION = 1;
 const HISTORY_STORE_NAME = "rideHistory";
 const HISTORY_MAX_ITEMS = 2;
+const GLOBAL_HISTORY_ENDPOINT = "/api/history";
 
 const fitFileInput = document.getElementById("fitFile");
 const statusEl = document.getElementById("status");
@@ -634,12 +635,22 @@ async function openHistoryEntry(historyId) {
       return;
     }
 
-    if (!(entry.fileBlob instanceof Blob)) {
+    let buffer = null;
+    if (entry.fileBlob instanceof Blob) {
+      buffer = await entry.fileBlob.arrayBuffer();
+    } else if (typeof entry.fileUrl === "string" && entry.fileUrl.length > 0) {
+      const fitResponse = await fetch(entry.fileUrl, { cache: "no-store" });
+      if (!fitResponse.ok) {
+        throw new Error(`Stažení FIT selhalo (${fitResponse.status}).`);
+      }
+      buffer = await fitResponse.arrayBuffer();
+    }
+
+    if (!buffer) {
       statusEl.textContent = "Záznam historie je neúplný. Nahraj soubor znovu.";
       return;
     }
 
-    const buffer = await entry.fileBlob.arrayBuffer();
     const parsedFit = parseFitFile(buffer);
     const analysis = analyzeRide(parsedFit);
     setCurrentRun(entry.fileName, parsedFit, analysis);
@@ -714,6 +725,13 @@ async function addRideToHistory(file, analysis) {
   }
 
   try {
+    await addRideToGlobalHistory(file, analysis);
+    return;
+  } catch (error) {
+    console.error("Uložení globální historie selhalo, přepínám na lokální:", error);
+  }
+
+  try {
     const db = await openHistoryDb();
 
     const addTx = db.transaction(HISTORY_STORE_NAME, "readwrite");
@@ -743,6 +761,16 @@ async function addRideToHistory(file, analysis) {
 }
 
 async function getRecentRideHistory(limit) {
+  try {
+    return await getRecentRideHistoryGlobal(limit);
+  } catch (error) {
+    console.error("Načtení globální historie selhalo, používám lokální:", error);
+  }
+
+  if (!("indexedDB" in window)) {
+    return [];
+  }
+
   const db = await openHistoryDb();
   const tx = db.transaction(HISTORY_STORE_NAME, "readonly");
   const store = tx.objectStore(HISTORY_STORE_NAME);
@@ -754,13 +782,144 @@ async function getRecentRideHistory(limit) {
 }
 
 async function getRideHistoryById(id) {
+  try {
+    const globalEntry = await getRideHistoryByIdGlobal(id);
+    if (globalEntry) {
+      return globalEntry;
+    }
+  } catch (error) {
+    console.error("Načtení globálního záznamu selhalo, hledám lokálně:", error);
+  }
+
+  if (!("indexedDB" in window)) {
+    return null;
+  }
+
+  const parsedId = Number(id);
+  if (!Number.isInteger(parsedId) || parsedId <= 0) {
+    return null;
+  }
+
   const db = await openHistoryDb();
   const tx = db.transaction(HISTORY_STORE_NAME, "readonly");
   const store = tx.objectStore(HISTORY_STORE_NAME);
-  const entry = await requestToPromise(store.get(id));
+  const entry = await requestToPromise(store.get(parsedId));
   await transactionToPromise(tx);
   db.close();
   return entry || null;
+}
+
+async function addRideToGlobalHistory(file, analysis) {
+  const payload = {
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    createdAtMs: Date.now(),
+    totalDistanceM: analysis.totalDistanceM,
+    totalAscentM: analysis.totalAscentM,
+    avgSpeedKmh: analysis.avgSpeedKmh,
+    fileBase64: await fileToBase64(file),
+  };
+
+  const response = await fetch(GLOBAL_HISTORY_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await parseApiJson(response);
+  if (!response.ok) {
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+}
+
+async function getRecentRideHistoryGlobal(limit) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  const response = await fetch(`${GLOBAL_HISTORY_ENDPOINT}?${query.toString()}`, {
+    cache: "no-store",
+  });
+  const data = await parseApiJson(response);
+  if (!response.ok) {
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return Array.isArray(data.entries)
+    ? data.entries.map(normalizeHistoryEntry).filter(Boolean)
+    : [];
+}
+
+async function getRideHistoryByIdGlobal(id) {
+  const response = await fetch(
+    `${GLOBAL_HISTORY_ENDPOINT}?id=${encodeURIComponent(String(id))}`,
+    { cache: "no-store" }
+  );
+  const data = await parseApiJson(response);
+
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+
+  return normalizeHistoryEntry(data.entry);
+}
+
+async function parseApiJson(response) {
+  try {
+    return await response.json();
+  } catch (_error) {
+    return {};
+  }
+}
+
+async function fileToBase64(file) {
+  const buffer = await file.arrayBuffer();
+  return arrayBufferToBase64(buffer);
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+function normalizeHistoryEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const rawId = entry.id;
+  const id =
+    typeof rawId === "string"
+      ? rawId
+      : Number.isInteger(rawId)
+        ? String(rawId)
+        : null;
+
+  if (!id) {
+    return null;
+  }
+
+  const createdAtMs = Number(entry.createdAtMs);
+  const totalDistanceM = Number(entry.totalDistanceM);
+  const totalAscentM = Number(entry.totalAscentM);
+  const avgSpeedKmh = Number(entry.avgSpeedKmh);
+
+  return {
+    id,
+    fileName: typeof entry.fileName === "string" && entry.fileName.length > 0 ? entry.fileName : `Jízda #${id}`,
+    createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
+    totalDistanceM: Number.isFinite(totalDistanceM) ? totalDistanceM : null,
+    totalAscentM: Number.isFinite(totalAscentM) ? totalAscentM : null,
+    avgSpeedKmh: Number.isFinite(avgSpeedKmh) ? avgSpeedKmh : null,
+    fileUrl: typeof entry.fileUrl === "string" ? entry.fileUrl : null,
+  };
 }
 
 function openHistoryDb() {
@@ -810,11 +969,8 @@ function getHistoryIdFromUrl() {
   if (!raw) {
     return null;
   }
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return null;
-  }
-  return parsed;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function removeHistoryParamFromUrl() {
