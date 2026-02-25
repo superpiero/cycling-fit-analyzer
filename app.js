@@ -638,12 +638,15 @@ async function openHistoryEntry(historyId) {
     let buffer = null;
     if (entry.fileBlob instanceof Blob) {
       buffer = await entry.fileBlob.arrayBuffer();
-    } else if (typeof entry.fileUrl === "string" && entry.fileUrl.length > 0) {
-      const fitResponse = await fetch(entry.fileUrl, { cache: "no-store" });
-      if (!fitResponse.ok) {
-        throw new Error(`Stažení FIT selhalo (${fitResponse.status}).`);
+    } else {
+      buffer = await getHistoryFileArrayBufferByIdGlobal(historyId);
+      if (!buffer && typeof entry.fileUrl === "string" && entry.fileUrl.length > 0) {
+        const fitResponse = await fetch(entry.fileUrl, { cache: "no-store" });
+        if (!fitResponse.ok) {
+          throw new Error(`Stažení FIT selhalo (${fitResponse.status}).`);
+        }
+        buffer = await fitResponse.arrayBuffer();
       }
-      buffer = await fitResponse.arrayBuffer();
     }
 
     if (!buffer) {
@@ -885,6 +888,27 @@ async function getRideHistoryByIdGlobal(id) {
   return normalizeHistoryEntry(data.entry);
 }
 
+async function getHistoryFileArrayBufferByIdGlobal(id) {
+  const response = await fetch(
+    `${GLOBAL_HISTORY_ENDPOINT}?id=${encodeURIComponent(String(id))}&includeFile=1`,
+    { cache: "no-store" }
+  );
+  const data = await parseApiJson(response);
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+
+  if (!data || typeof data.fileBase64 !== "string" || data.fileBase64.length === 0) {
+    return null;
+  }
+
+  return base64ToArrayBuffer(data.fileBase64);
+}
+
 async function parseApiJson(response) {
   try {
     return await response.json();
@@ -907,6 +931,16 @@ function arrayBufferToBase64(buffer) {
     binary += String.fromCharCode(...chunk);
   }
   return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const length = binary.length;
+  const bytes = new Uint8Array(length);
+  for (let i = 0; i < length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
 }
 
 function normalizeHistoryEntry(entry) {

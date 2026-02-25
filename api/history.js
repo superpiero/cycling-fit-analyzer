@@ -4,9 +4,12 @@ const MAX_HISTORY_ITEMS = 2;
 const HISTORY_PREFIX = "history/";
 const META_PREFIX = `${HISTORY_PREFIX}meta-`;
 const FIT_PREFIX = `${HISTORY_PREFIX}fit-`;
+const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
 module.exports = async function handler(req, res) {
   try {
+    res.setHeader("Cache-Control", "no-store");
+
     if (req.method === "GET") {
       await handleGet(req, res);
       return;
@@ -31,6 +34,17 @@ async function handleGet(req, res) {
     if (!entry) {
       throw httpError(404, "Záznam nebyl nalezen.");
     }
+
+    const includeFile = readQueryParam(req.query, "includeFile");
+    if (includeFile === "1" || includeFile === "true") {
+      const fileBase64 = await getEntryFileBase64(entry);
+      if (!fileBase64) {
+        throw httpError(404, "FIT soubor v historii nebyl nalezen.");
+      }
+      res.status(200).json({ entry, fileBase64 });
+      return;
+    }
+
     res.status(200).json({ entry });
     return;
   }
@@ -134,7 +148,10 @@ async function fetchEntryFromMetaBlob(blob) {
     return null;
   }
 
-  const response = await fetch(metaReadUrl, { cache: "no-store" });
+  const response = await fetch(metaReadUrl, {
+    cache: "no-store",
+    headers: getBlobFetchHeaders(),
+  });
   if (!response.ok) {
     return null;
   }
@@ -196,7 +213,12 @@ function normalizeHistoryEntry(entry) {
       ? entry.fileName
       : `Jízda #${id}`;
 
-  if (!fileUrl) {
+  const filePathname =
+    typeof entry.filePathname === "string" && entry.filePathname.length > 0
+      ? entry.filePathname
+      : null;
+
+  if (!fileUrl && !filePathname) {
     return null;
   }
 
@@ -207,10 +229,7 @@ function normalizeHistoryEntry(entry) {
     totalDistanceM: Number.isFinite(totalDistanceM) ? totalDistanceM : null,
     totalAscentM: Number.isFinite(totalAscentM) ? totalAscentM : null,
     avgSpeedKmh: Number.isFinite(avgSpeedKmh) ? avgSpeedKmh : null,
-    filePathname:
-      typeof entry.filePathname === "string" && entry.filePathname.length > 0
-        ? entry.filePathname
-        : null,
+    filePathname,
     fileUrl,
   };
 }
@@ -245,6 +264,39 @@ async function resolveBlobReadUrl(pathname) {
   }
 }
 
+async function getEntryFileBase64(entry) {
+  const readUrl = await resolveEntryReadUrl(entry);
+  if (!readUrl) {
+    return null;
+  }
+
+  const response = await fetch(readUrl, {
+    cache: "no-store",
+    headers: getBlobFetchHeaders(),
+  });
+  if (!response.ok) {
+    return null;
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer).toString("base64");
+}
+
+async function resolveEntryReadUrl(entry) {
+  if (typeof entry.filePathname === "string" && entry.filePathname.length > 0) {
+    const urlFromPath = await resolveBlobReadUrl(entry.filePathname);
+    if (urlFromPath) {
+      return urlFromPath;
+    }
+  }
+
+  if (typeof entry.fileUrl === "string" && entry.fileUrl.length > 0) {
+    return entry.fileUrl;
+  }
+
+  return null;
+}
+
 function getBlobReadUrl(blobInfo) {
   if (!blobInfo || typeof blobInfo !== "object") {
     return null;
@@ -256,6 +308,15 @@ function getBlobReadUrl(blobInfo) {
     return blobInfo.url;
   }
   return null;
+}
+
+function getBlobFetchHeaders() {
+  if (!BLOB_TOKEN) {
+    return undefined;
+  }
+  return {
+    Authorization: `Bearer ${BLOB_TOKEN}`,
+  };
 }
 
 function sanitizeFileName(fileName) {
