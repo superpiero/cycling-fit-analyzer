@@ -5,6 +5,7 @@ const HISTORY_PREFIX = "default/history/";
 const META_PREFIX = `${HISTORY_PREFIX}meta-`;
 const FIT_PREFIX = `${HISTORY_PREFIX}fit-`;
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
+const BLOB_ACCESS = "public";
 
 module.exports = async function handler(req, res) {
   try {
@@ -105,7 +106,7 @@ async function handlePost(req, res) {
   const safeName = sanitizeFileName(fileName);
   const fitPathname = `${FIT_PREFIX}${id}-${safeName}`;
   const fitBlob = await put(fitPathname, fileBuffer, {
-    access: "private",
+    access: BLOB_ACCESS,
     addRandomSuffix: false,
     contentType: mimeType,
   });
@@ -128,7 +129,7 @@ async function handlePost(req, res) {
 
   const metaPathname = `${META_PREFIX}${id}.json`;
   await put(metaPathname, JSON.stringify(entry), {
-    access: "private",
+    access: BLOB_ACCESS,
     addRandomSuffix: false,
     contentType: "application/json; charset=utf-8",
   });
@@ -346,7 +347,7 @@ async function runWriteDiagnostic() {
 
   try {
     await put(probePath, "ok", {
-      access: "private",
+      access: BLOB_ACCESS,
       addRandomSuffix: false,
       contentType: "text/plain; charset=utf-8",
     });
