@@ -694,17 +694,31 @@ function createHistoryCard(entry) {
   const card = document.createElement("article");
   card.className = "history-item";
 
-  const openLink = document.createElement("a");
-  openLink.className = "history-open";
-  openLink.href = buildHistoryLink(entry.id);
-  openLink.title = "Otevřít záznam";
+  const head = document.createElement("div");
+  head.className = "history-head";
 
   const icon = document.createElement("div");
   icon.className = "history-icon";
   icon.textContent = "FIT";
+  head.append(icon);
 
-  const main = document.createElement("div");
-  main.className = "history-main";
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "history-delete";
+  deleteBtn.title = "Smazat z historie";
+  deleteBtn.setAttribute("aria-label", "Smazat z historie");
+  deleteBtn.textContent = "×";
+  deleteBtn.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    await deleteHistoryEntry(entry);
+  });
+  head.append(deleteBtn);
+
+  const openLink = document.createElement("a");
+  openLink.className = "history-open";
+  openLink.href = buildHistoryLink(entry.id);
+  openLink.title = "Otevřít záznam";
 
   const name = document.createElement("p");
   name.className = "history-name";
@@ -720,22 +734,8 @@ function createHistoryCard(entry) {
   date.className = "history-date";
   date.textContent = formatHistoryDate(entry.createdAtMs);
 
-  main.append(name, meta, date);
-  openLink.append(icon, main);
-
-  const deleteBtn = document.createElement("button");
-  deleteBtn.type = "button";
-  deleteBtn.className = "history-delete";
-  deleteBtn.title = "Smazat z historie";
-  deleteBtn.setAttribute("aria-label", "Smazat z historie");
-  deleteBtn.textContent = "×";
-  deleteBtn.addEventListener("click", async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    await deleteHistoryEntry(entry);
-  });
-
-  card.append(openLink, deleteBtn);
+  openLink.append(name, meta, date);
+  card.append(head, openLink);
   return card;
 }
 

@@ -170,77 +170,77 @@ h2 {
 }
 
 .history-item {
-  position: relative;
   flex: 0 0 calc((100% - 4 * 10px) / 5);
   min-width: 180px;
   max-width: 230px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
-  min-height: 112px;
+  min-height: 140px;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
 }
 
 .history-open {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
+  display: block;
   text-decoration: none;
   color: inherit;
-  padding: 12px;
-  min-height: 112px;
+  min-height: 0;
 }
 
 .history-icon {
-  width: 36px;
-  height: 36px;
+  width: 64px;
+  height: 34px;
   border-radius: 10px;
   border: 1px solid #d9c5a9;
   background: linear-gradient(145deg, #fff5e8, #fee4cb);
-  display: grid;
-  place-items: center;
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  letter-spacing: 0.08em;
   font-family: "IBM Plex Mono", "Fira Code", monospace;
   color: #9b4f25;
   font-weight: 700;
   flex: 0 0 auto;
 }
 
-.history-main {
-  min-width: 0;
-}
-
 .history-name {
   margin: 0;
   font-size: 15px;
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .history-meta {
-  margin: 4px 0 0;
+  margin: 8px 0 0;
   font-size: 12px;
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
 }
 
 .history-date {
-  margin: 3px 0 0;
+  margin: 4px 0 0;
   font-size: 12px;
   color: var(--muted);
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .history-delete {
-  position: absolute;
-  top: 8px;
-  right: 8px;
   width: 22px;
   height: 22px;
+  flex: 0 0 auto;
   border-radius: 999px;
   border: 1px solid #dfc2ad;
   background: #fff7f0;
